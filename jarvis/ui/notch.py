@@ -136,7 +136,7 @@ class VoiceOSNotch(QWidget):
         self.reposition(self._width, self._normal_height, animated=False)
 
     def pop_up(self):
-        """Slides down smoothly from top bezel to y=0 (VoiceOS animation)."""
+        """Fades in smoothly at top bezel (VoiceOS animation)."""
         screen = QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
         geom = screen.availableGeometry() if screen else QRect(0, 0, 1920, 1080)
 
@@ -144,48 +144,25 @@ class VoiceOSNotch(QWidget):
         h = self.height() if self.height() > self._normal_height else self._normal_height
         x = geom.x() + (geom.width() - w) // 2
         target_y = geom.y()
-        start_y = target_y - h  # Hidden above screen top bezel
 
-        self.setGeometry(x, start_y, w, h)
+        self.setGeometry(x, target_y, w, h)
         self.setWindowOpacity(0.0)
         self.show()
         self.raise_()
         self.activateWindow()
 
-        # Slide down
-        self.anim_geom.stop()
-        self.anim_geom.setDuration(200)
-        self.anim_geom.setStartValue(QRect(x, start_y, w, h))
-        self.anim_geom.setEndValue(QRect(x, target_y, w, h))
-        self.anim_geom.setEasingCurve(QEasingCurve.OutCubic)
-        self.anim_geom.start()
-
         # Fade in
         self.anim_opacity.stop()
-        self.anim_opacity.setDuration(150)
+        self.anim_opacity.setDuration(160)
         self.anim_opacity.setStartValue(0.0)
         self.anim_opacity.setEndValue(1.0)
         self.anim_opacity.setEasingCurve(QEasingCurve.OutCubic)
         self.anim_opacity.start()
 
     def disappear(self):
-        """Slides up smoothly into top bezel and disappears."""
+        """Fades out smoothly and resets state."""
         if not self.isVisible():
             return
-
-        screen = QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
-        geom = screen.availableGeometry() if screen else QRect(0, 0, 1920, 1080)
-
-        w = self.width()
-        h = self.height()
-        x = self.x()
-        target_y = geom.y() - h
-
-        self.anim_geom.stop()
-        self.anim_geom.setDuration(180)
-        self.anim_geom.setStartValue(self.geometry())
-        self.anim_geom.setEndValue(QRect(x, target_y, w, h))
-        self.anim_geom.setEasingCurve(QEasingCurve.InCubic)
 
         self.anim_opacity.stop()
         self.anim_opacity.setDuration(150)
@@ -201,12 +178,10 @@ class VoiceOSNotch(QWidget):
             self.set_state("IDLE", "Ready • Hold Ctrl+Alt to speak")
 
         try:
-            self.anim_geom.finished.disconnect()
+            self.anim_opacity.finished.disconnect()
         except Exception:
             pass
-        self.anim_geom.finished.connect(_finish_hide)
-
-        self.anim_geom.start()
+        self.anim_opacity.finished.connect(_finish_hide)
         self.anim_opacity.start()
 
     def mousePressEvent(self, event: QMouseEvent):

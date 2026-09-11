@@ -76,22 +76,31 @@ class AIProvider:
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": f"Spoken command: '{transcript}'{ctx_msg}"},
                 ],
+                response_format={"type": "json_object"},
                 temperature=0.1,
-                max_tokens=250,
+                max_tokens=1000,
             )
 
             raw_text = resp.choices[0].message.content or ""
-            # Extract JSON block using regex
-            json_match = re.search(r"(\{.*\})", raw_text, re.DOTALL)
-            if not json_match:
+            data = {}
+            try:
+                data = json.loads(raw_text)
+            except Exception:
+                json_match = re.search(r"(\{.*\})", raw_text, re.DOTALL)
+                if json_match:
+                    try:
+                        data = json.loads(json_match.group(1))
+                    except Exception:
+                        pass
+
+            if not data:
                 return Intent(
                     category=IntentCategory.AI_QUERY,
                     action="query",
                     params={"query": transcript},
-                    confirmation_prompt=raw_text.strip(),
+                    confirmation_prompt=raw_text.strip() or f"I heard '{transcript}', but couldn't parse the action.",
                 )
 
-            data = json.loads(json_match.group(1))
             category_str = data.get("category", "AI_QUERY")
             try:
                 category = IntentCategory(category_str)
@@ -109,4 +118,9 @@ class AIProvider:
 
         except Exception as e:
             print(f"[AIProvider] Error querying LLM: {e}")
-            return None
+            return Intent(
+                category=IntentCategory.AI_QUERY,
+                action="query",
+                params={"query": transcript},
+                confirmation_prompt="I encountered an issue connecting to the AI service, sir.",
+            )
