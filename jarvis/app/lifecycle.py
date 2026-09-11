@@ -265,11 +265,16 @@ class LifecycleManager(QObject):
                 self.sig_action_step.emit(f"Step {step_count}: {next_step}", "⚡", True)
 
             self.sig_set_state.emit("SPEAKING", status_text)
-        else:
             if result.is_success():
                 self.sig_set_state.emit("SPEAKING", status_text)
             else:
                 self.sig_set_state.emit("ERROR", status_text)
+
+        # Feed turn into Chat Composer Thread
+        try:
+            self.sidebar.add_chat_turn(transcript, status_text)
+        except Exception as e:
+            print(f"[Lifecycle] Failed to add chat turn: {e}")
 
         # Log to persistent SQLite history
         if config.get("save_history", True):

@@ -124,6 +124,9 @@ QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
 """
 
 
+from jarvis.ui.chat_composer import ChatComposerPanel
+
+
 class HistorySidebar(QWidget):
     run_again_requested = Signal(str)
 
@@ -138,8 +141,9 @@ class HistorySidebar(QWidget):
         )
         self.setAttribute(Qt.WA_TranslucentBackground)
 
-        self._width = 340
+        self._width = 400
         self._is_visible = False
+        self._active_tab = "chat"
 
         # Container
         self.container = QWidget(self)
@@ -161,29 +165,18 @@ class HistorySidebar(QWidget):
         container_layout.setContentsMargins(14, 16, 14, 16)
         container_layout.setSpacing(10)
 
-        # ── Header Row: New Chat + Close ──
+        # ── Header Row: Mode Switcher Tabs + Close ──
         header_layout = QHBoxLayout()
-        header_layout.setContentsMargins(4, 0, 4, 0)
+        header_layout.setContentsMargins(2, 0, 2, 0)
+        header_layout.setSpacing(8)
 
-        self.btn_new_chat = QPushButton("＋")
-        self.btn_new_chat.setToolTip("New session")
-        self.btn_new_chat.setStyleSheet("""
-            QPushButton {
-                background: rgba(255, 255, 255, 0.06);
-                color: #94a3b8;
-                border: 1px solid rgba(255, 255, 255, 0.10);
-                border-radius: 10px;
-                font-size: 16px;
-                font-weight: 300;
-                padding: 4px 10px;
-            }
-            QPushButton:hover {
-                background: rgba(255, 255, 255, 0.12);
-                color: #ffffff;
-                border-color: rgba(255, 255, 255, 0.25);
-            }
-        """)
-        self.btn_new_chat.clicked.connect(self._on_new_session)
+        self.btn_tab_chat = QPushButton("💬 Chat")
+        self.btn_tab_chat.setCursor(Qt.PointingHandCursor)
+        self.btn_tab_chat.clicked.connect(lambda: self._switch_tab("chat"))
+
+        self.btn_tab_history = QPushButton("🕒 History")
+        self.btn_tab_history.setCursor(Qt.PointingHandCursor)
+        self.btn_tab_history.clicked.connect(lambda: self._switch_tab("history"))
 
         self.btn_close = QPushButton("✕")
         self.btn_close.setStyleSheet("""
@@ -198,12 +191,25 @@ class HistorySidebar(QWidget):
         """)
         self.btn_close.clicked.connect(self.hide_sidebar)
 
-        header_layout.addWidget(self.btn_new_chat)
+        header_layout.addWidget(self.btn_tab_chat)
+        header_layout.addWidget(self.btn_tab_history)
         header_layout.addStretch()
         header_layout.addWidget(self.btn_close)
         container_layout.addLayout(header_layout)
 
-        # ── Search Box with icon ──
+        # ── 1. Chat Composer Panel ──
+        self.chat_panel = ChatComposerPanel(self)
+        self.chat_panel.message_sent.connect(self.run_again_requested.emit)
+        self.chat_panel.follow_up_selected.connect(self.run_again_requested.emit)
+        container_layout.addWidget(self.chat_panel, 1)
+
+        # ── 2. History List Container (Search + Scroll) ──
+        self.history_panel = QWidget()
+        hist_panel_layout = QVBoxLayout(self.history_panel)
+        hist_panel_layout.setContentsMargins(0, 0, 0, 0)
+        hist_panel_layout.setSpacing(10)
+
+        # Search Box with icon
         search_container = QWidget()
         search_layout = QHBoxLayout(search_container)
         search_layout.setContentsMargins(0, 0, 0, 0)
@@ -211,7 +217,7 @@ class HistorySidebar(QWidget):
 
         self.search_input = QLineEdit()
         self.search_input.setObjectName("SearchInput")
-        self.search_input.setPlaceholderText("Search")
+        self.search_input.setPlaceholderText("Search past commands")
         self.search_input.textChanged.connect(self.refresh_history)
 
         # Search icon overlay
@@ -220,9 +226,9 @@ class HistorySidebar(QWidget):
         self.search_icon.move(12, 8)
 
         search_layout.addWidget(self.search_input)
-        container_layout.addWidget(search_container)
+        hist_panel_layout.addWidget(search_container)
 
-        # ── Scroll Area for History Items ──
+        # Scroll Area for History Items
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -233,12 +239,68 @@ class HistorySidebar(QWidget):
         self.scroll_layout.addStretch()
 
         self.scroll_area.setWidget(self.scroll_content)
-        container_layout.addWidget(self.scroll_area)
+        hist_panel_layout.addWidget(self.scroll_area, 1)
+
+        container_layout.addWidget(self.history_panel, 1)
+        self.history_panel.hide()
+
+        self._update_tab_headers()
 
         # Animation
         self.anim = QPropertyAnimation(self, b"geometry")
         self.anim.setDuration(280)
         self.anim.setEasingCurve(QEasingCurve.OutCubic)
+
+    def _switch_tab(self, tab: str):
+        self._active_tab = tab
+        if tab == "chat":
+            self.chat_panel.show()
+            self.history_panel.hide()
+        else:
+            self.chat_panel.hide()
+            self.history_panel.show()
+            self.refresh_history()
+        self._update_tab_headers()
+
+    def _update_tab_headers(self):
+        active_style = """
+            QPushButton {
+                background: rgba(255, 255, 255, 0.12);
+                color: #ffffff;
+                border: 1px solid rgba(255, 255, 255, 0.20);
+                border-radius: 9px;
+                padding: 5px 14px;
+                font-size: 12px;
+                font-weight: 600;
+            }
+        """
+        inactive_style = """
+            QPushButton {
+                background: transparent;
+                color: #64748b;
+                border: none;
+                border-radius: 9px;
+                padding: 5px 14px;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background: rgba(255, 255, 255, 0.05);
+                color: #cbd5e1;
+            }
+        """
+        self.btn_tab_chat.setStyleSheet(active_style if self._active_tab == "chat" else inactive_style)
+        self.btn_tab_history.setStyleSheet(active_style if self._active_tab == "history" else inactive_style)
+
+    def add_chat_turn(self, user_text: str, assistant_text: str, label: str = "JARVIS Response", execution_time: str = "1s"):
+        """Appends a turn to the interactive ChatComposer thread."""
+        self.chat_panel.add_user_message(user_text)
+        self.chat_panel.add_assistant_message(
+            label=label,
+            sub="VoiceOS",
+            time_str=execution_time,
+            body=assistant_text,
+            follow_ups=["Tell me more", "What else can you do?"]
+        )
 
     def toggle(self):
         if self._is_visible:
