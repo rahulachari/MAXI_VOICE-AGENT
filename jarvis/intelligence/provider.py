@@ -59,25 +59,94 @@ Output ONLY valid JSON like this:
 """
 
 
+import urllib.request
+
+
 class AIProvider:
     def __init__(self):
-        self.api_key = config.get("groq_api_key")
-        self.model = config.get("ai_model", "openai/gpt-oss-120b")
+        self.gemini_key = config.get("gemini_api_key")
+        self.groq_key = config.get("groq_api_key")
+        self.provider = config.get("ai_provider", "gemini" if self.gemini_key else "groq")
+        default_model = "gemini-3.6-flash" if self.provider == "gemini" else "openai/gpt-oss-120b"
+        self.model = config.get("ai_model", default_model)
 
     def parse_intent(self, transcript: str, context: Optional[Dict[str, Any]] = None) -> Optional[Intent]:
-        if not self.api_key:
-            return None
+        # Priority 1: Google Gemini if configured
+        if self.gemini_key and (self.provider == "gemini" or not self.groq_key):
+            intent = self._query_gemini(transcript, context)
+            if intent:
+                return intent
 
+        # Priority 2: Groq
+        if self.groq_key:
+            intent = self._query_groq(transcript, context)
+            if intent:
+                return intent
+
+        return None
+
+    def _query_gemini(self, transcript: str, context: Optional[Dict[str, Any]] = None) -> Optional[Intent]:
+        models_to_try = [self.model, "gemini-flash-latest", "gemini-3.6-flash"]
+        seen = set()
+        unique_models = []
+        for m in models_to_try:
+            if m and m not in seen and "gemini" in m:
+                seen.add(m)
+                unique_models.append(m)
+
+        ctx_msg = ""
+        if context:
+            ctx_msg = f"\nForeground: '{context.get('window_title', '')}', Process: '{context.get('process_name', '')}'"
+
+        payload = {
+            "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+            "contents": [{"parts": [{"text": f"Spoken command: '{transcript}'{ctx_msg}"}]}],
+            "generationConfig": {
+                "response_mime_type": "application/json",
+                "temperature": 0.1,
+                "maxOutputTokens": 1000,
+            },
+        }
+        data_bytes = json.dumps(payload).encode("utf-8")
+
+        for model in unique_models:
+            try:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self.gemini_key}"
+                req = urllib.request.Request(
+                    url,
+                    data=data_bytes,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    res = json.loads(response.read().decode("utf-8"))
+                    candidates = res.get("candidates", [])
+                    if not candidates:
+                        continue
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    if not parts:
+                        continue
+                    raw_text = parts[0].get("text", "")
+                    return self._parse_json_to_intent(raw_text, transcript)
+
+            except Exception as e:
+                print(f"[AIProvider] Gemini model {model} error: {e}")
+                continue
+
+        return None
+
+    def _query_groq(self, transcript: str, context: Optional[Dict[str, Any]] = None) -> Optional[Intent]:
         try:
             from groq import Groq
-            client = Groq(api_key=self.api_key)
+            client = Groq(api_key=self.groq_key)
 
             ctx_msg = ""
             if context:
                 ctx_msg = f"\nForeground: '{context.get('window_title', '')}', Process: '{context.get('process_name', '')}'"
 
             resp = client.chat.completions.create(
-                model=self.model,
+                model=self.model if "gemini" not in self.model else "openai/gpt-oss-120b",
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": f"Spoken command: '{transcript}'{ctx_msg}"},
@@ -88,49 +157,47 @@ class AIProvider:
             )
 
             raw_text = resp.choices[0].message.content or ""
-            data = {}
-            try:
-                data = json.loads(raw_text)
-            except Exception:
-                json_match = re.search(r"(\{.*\})", raw_text, re.DOTALL)
-                if json_match:
-                    try:
-                        data = json.loads(json_match.group(1))
-                    except Exception:
-                        pass
-
-            if not data:
-                return Intent(
-                    category=IntentCategory.AI_QUERY,
-                    action="query",
-                    params={"query": transcript},
-                    confirmation_prompt="I understood your command, but I need a moment to process it.",
-                )
-
-            category_str = data.get("category", "AI_QUERY")
-            try:
-                category = IntentCategory(category_str)
-            except ValueError:
-                category = IntentCategory.AI_QUERY
-
-            spoken_resp = data.get("spoken_response", "").strip()
-            if not spoken_resp:
-                spoken_resp = f"Understood, executing {data.get('action', 'request')}."
-
-            return Intent(
-                category=category,
-                target=data.get("target", ""),
-                action=data.get("action", ""),
-                params=data.get("params", {}),
-                requires_confirmation=data.get("requires_confirmation", False),
-                confirmation_prompt=spoken_resp,
-            )
+            return self._parse_json_to_intent(raw_text, transcript)
 
         except Exception as e:
-            print(f"[AIProvider] Error querying LLM: {e}")
+            print(f"[AIProvider] Error querying Groq: {e}")
+            return None
+
+    def _parse_json_to_intent(self, raw_text: str, transcript: str) -> Intent:
+        data = {}
+        try:
+            data = json.loads(raw_text)
+        except Exception:
+            json_match = re.search(r"(\{.*\})", raw_text, re.DOTALL)
+            if json_match:
+                try:
+                    data = json.loads(json_match.group(1))
+                except Exception:
+                    pass
+
+        if not data:
             return Intent(
                 category=IntentCategory.AI_QUERY,
                 action="query",
                 params={"query": transcript},
-                confirmation_prompt="I encountered an issue connecting to the AI service, sir.",
+                confirmation_prompt="I understood your command, but I need a moment to process it.",
             )
+
+        category_str = data.get("category", "AI_QUERY")
+        try:
+            category = IntentCategory(category_str)
+        except ValueError:
+            category = IntentCategory.AI_QUERY
+
+        spoken_resp = data.get("spoken_response", "").strip()
+        if not spoken_resp:
+            spoken_resp = f"Understood, executing {data.get('action', 'request')}."
+
+        return Intent(
+            category=category,
+            target=data.get("target", ""),
+            action=data.get("action", ""),
+            params=data.get("params", {}),
+            requires_confirmation=data.get("requires_confirmation", False),
+            confirmation_prompt=spoken_resp,
+        )

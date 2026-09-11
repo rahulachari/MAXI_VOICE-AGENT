@@ -55,6 +55,12 @@ class ConfigManager:
                 print(f"[Config] Error loading settings.json: {e}")
 
         # Always ensure environment variables take priority for keys if not set in JSON
+        if os.getenv("GEMINI_API_KEY"):
+            self._config["gemini_api_key"] = os.getenv("GEMINI_API_KEY")
+        if os.getenv("AI_PROVIDER"):
+            self._config["ai_provider"] = os.getenv("AI_PROVIDER")
+        if os.getenv("AI_MODEL"):
+            self._config["ai_model"] = os.getenv("AI_MODEL")
         if not self._config.get("groq_api_key") and os.getenv("GROQ_API_KEY"):
             self._config["groq_api_key"] = os.getenv("GROQ_API_KEY")
 
