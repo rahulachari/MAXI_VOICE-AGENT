@@ -17,3 +17,9 @@ build/
 *.log
 scratch/
 jarvis/debug_captures/
+
+# Tauri & Node build artifacts
+voiceos-desktop/src-tauri/target/
+**/target/
+**/node_modules/
+VoiceOS.exe
