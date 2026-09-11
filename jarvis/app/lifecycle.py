@@ -134,18 +134,19 @@ class LifecycleManager(QObject):
         if tts_engine.is_speaking():
             tts_engine.stop()
 
+        self._pending_confirmation = False
+        self.sig_popup.emit()
+        self.sig_set_state.emit("LISTENING", "Listening...")
+
         if not self.recorder.is_recording:
-            self._pending_confirmation = False
-            self.sig_popup.emit()
-            self.sig_set_state.emit("LISTENING", "Listening...")
             self.recorder.start_listening()
 
     def on_hotkey_up(self, duration: float):
         """Called as soon as Ctrl+Alt is released (Push-to-Talk end)."""
-        if duration >= 0.25:
+        if duration >= 0.15:
             if self.recorder.is_recording:
                 print(f"[Lifecycle] Hold-to-talk released ({duration:.2f}s). Processing speech...")
-                self.sig_set_state.emit("PROCESSING", "Analyzing speech...")
+                self.sig_set_state.emit("PROCESSING", "Thinking...")
                 self.recorder.stop_listening()
         else:
             print(f"[Lifecycle] Hotkey tap detected ({duration:.2f}s). Keeping listener active...")

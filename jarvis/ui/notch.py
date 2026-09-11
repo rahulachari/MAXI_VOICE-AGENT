@@ -153,10 +153,15 @@ class VoiceOSNotch(QWidget):
         self.anim_opacity.setDuration(150)
         self.anim_opacity.setEasingCurve(QEasingCurve.OutCubic)
 
+        self._is_fading_out = False
         self.reposition(self._width, self._normal_height, animated=False)
 
     def pop_up(self):
-        """Fades in smoothly at top bezel (VoiceOS animation)."""
+        """Shows the floating capsule HUD at top screen center."""
+        self._is_fading_out = False
+        self.anim_opacity.stop()
+        self.setWindowOpacity(1.0)
+
         screen = QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
         geom = screen.availableGeometry() if screen else QRect(0, 0, 1920, 1080)
 
@@ -169,37 +174,32 @@ class VoiceOSNotch(QWidget):
         target_y = geom.y() + 16
 
         self.setGeometry(x, target_y, w, h)
-        self.setWindowOpacity(0.0)
         self.show()
         self.raise_()
         self.activateWindow()
 
-        # Fade in
-        self.anim_opacity.stop()
-        self.anim_opacity.setDuration(160)
-        self.anim_opacity.setStartValue(0.0)
-        self.anim_opacity.setEndValue(1.0)
-        self.anim_opacity.setEasingCurve(QEasingCurve.OutCubic)
-        self.anim_opacity.start()
-
     def disappear(self):
         """Fades out smoothly and resets state."""
-        if not self.isVisible():
+        if not self.isVisible() or self._is_fading_out:
             return
 
+        self._is_fading_out = True
         self.anim_opacity.stop()
-        self.anim_opacity.setDuration(150)
-        self.anim_opacity.setStartValue(self.windowOpacity())
-        self.anim_opacity.setEndValue(0.0)
-        self.anim_opacity.setEasingCurve(QEasingCurve.InCubic)
 
         def _finish_hide():
+            if not self._is_fading_out:
+                return
+            self._is_fading_out = False
             self.hide()
             self.action_card.hide()
             self.clear_pipeline()
             self.setWindowOpacity(1.0)
             self.set_state("IDLE", "Ready • Hold Ctrl+Alt to speak")
 
+        self.anim_opacity.setDuration(120)
+        self.anim_opacity.setStartValue(self.windowOpacity())
+        self.anim_opacity.setEndValue(0.0)
+        self.anim_opacity.setEasingCurve(QEasingCurve.InCubic)
         try:
             self.anim_opacity.finished.disconnect()
         except Exception:
