@@ -22,43 +22,39 @@ FONT_STACK = "'Segoe UI Variable Display', 'Segoe UI', -apple-system, 'SF Pro Di
 FONT_MONO = "'Cascadia Code', 'DM Mono', 'SF Mono', 'Consolas', monospace"
 
 NOTCH_BASE_STYLE = f"""
-QWidget#NotchContainer {{
-    background: {COLOR_BACKGROUND_GLASS};
-    border-left: 1px solid {COLOR_BORDER_GLASS};
-    border-right: 1px solid {COLOR_BORDER_GLASS};
-    border-bottom: 1.5px solid {COLOR_BORDER_RIM};
-    border-top: none;
-    border-top-left-radius: 0px;
-    border-top-right-radius: 0px;
-    border-bottom-left-radius: 24px;
-    border-bottom-right-radius: 24px;
+QFrame#NotchContainer {{
+    background: rgba(18, 20, 26, 0.94);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 40px;
 }}
 
 QLabel {{
     color: {COLOR_TEXT_PRIMARY};
     font-family: {FONT_STACK};
+    background: transparent;
 }}
 
 QLabel#PromptLabel {{
     color: {COLOR_TEXT_PRIMARY};
-    font-size: 13.5px;
-    font-weight: 600;
-    letter-spacing: -0.15px;
+    font-size: 16px;
+    font-weight: 500;
+    letter-spacing: -0.2px;
+    background: transparent;
 }}
 
 QLabel#StatusPill {{
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.10);
-    border-radius: 11px;
-    color: #a1a1aa;
-    padding: 3px 12px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 9px;
+    color: #94a3b8;
+    padding: 2px 10px;
     font-size: 11px;
     font-weight: 500;
     letter-spacing: 0.15px;
 }}
 QLabel#StatusPill:hover {{
-    background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.25);
     color: #ffffff;
 }}
 """

@@ -8,9 +8,11 @@ from typing import Optional
 from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QRect, Signal, QPoint
 from PySide6.QtWidgets import (
     QWidget,
+    QFrame,
     QVBoxLayout,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QGraphicsDropShadowEffect,
 )
 from PySide6.QtGui import QColor, QMouseEvent, QGuiApplication, QCursor
@@ -43,38 +45,40 @@ class VoiceOSNotch(QWidget):
         self._normal_height = 84
         self._card_height = 176
 
-        # Layout Container
-        self.container = QWidget(self)
+        # Layout Container - Modern VoiceOS Pill Capsule
+        self.container = QFrame(self)
         self.container.setObjectName("NotchContainer")
         self.container.setStyleSheet(NOTCH_BASE_STYLE)
 
         # Deep Apple liquid glass ambient drop shadow beneath the notch
         shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(20)
-        shadow.setColor(QColor(0, 0, 0, 240))
-        shadow.setOffset(0, 4)
+        shadow.setBlurRadius(24)
+        shadow.setColor(QColor(0, 0, 0, 200))
+        shadow.setOffset(0, 6)
         self.container.setGraphicsEffect(shadow)
 
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setContentsMargins(16, 12, 16, 20)
         main_layout.addWidget(self.container)
 
         container_layout = QVBoxLayout(self.container)
-        container_layout.setContentsMargins(18, 12, 18, 14)
+        container_layout.setContentsMargins(14, 10, 16, 12)
         container_layout.setSpacing(8)
 
-        # Top Content Row: Orb + (Prompt & Status Pill) + Close Button
+        # Top Content Row: Liquid Orb + (Prompt & Status Pill) + Close Button
         self.content_row = QHBoxLayout()
         self.content_row.setSpacing(14)
         self.content_row.setAlignment(Qt.AlignVCenter)
 
-        # Glowing celestial orb on the left (Clicking orb acts as action toggle)
-        self.orb = VoiceOSOrb(self)
-        self.content_row.addWidget(self.orb, alignment=Qt.AlignTop)
+        # Glowing Neural Plasma Liquid Orb on the left (Clicking orb acts as action toggle)
+        self.orb = VoiceOSOrb(self, size=52)
+        self.orb.clicked.connect(self.clicked.emit)
+        self.content_row.addWidget(self.orb, alignment=Qt.AlignVCenter)
 
         # Vertical text stack: prompt on top, status pill below
         text_layout = QVBoxLayout()
         text_layout.setSpacing(4)
+        text_layout.setAlignment(Qt.AlignVCenter)
 
         self.prompt_label = QLabel("What can I do for you?")
         self.prompt_label.setObjectName("PromptLabel")
@@ -129,7 +133,7 @@ class VoiceOSNotch(QWidget):
             }
         """)
         self.btn_close.clicked.connect(self.close_requested.emit)
-        self.content_row.addWidget(self.btn_close, alignment=Qt.AlignTop)
+        self.content_row.addWidget(self.btn_close, alignment=Qt.AlignVCenter)
 
         container_layout.addLayout(self.content_row)
 
@@ -139,13 +143,6 @@ class VoiceOSNotch(QWidget):
         self.action_card.cancelled.connect(self.cancelled.emit)
         self.action_card.hide()
         container_layout.addWidget(self.action_card)
-
-        # Only clicking the orb acts as an intentional tap-to-talk / tap-to-stop action
-        def _on_orb_clicked(e):
-            if e.button() == Qt.LeftButton:
-                self.clicked.emit()
-
-        self.orb.mousePressEvent = _on_orb_clicked
 
         # Setup animations
         self.anim_geom = QPropertyAnimation(self, b"geometry")
@@ -163,10 +160,13 @@ class VoiceOSNotch(QWidget):
         screen = QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
         geom = screen.availableGeometry() if screen else QRect(0, 0, 1920, 1080)
 
-        w = self._width
-        h = self.height() if self.height() > self._normal_height else self._normal_height
+        self.container.adjustSize()
+        hint = self.container.sizeHint()
+        min_w = 460 if self.action_card.isVisible() else 320
+        w = max(min_w, min(hint.width(), 620)) + 36
+        h = max(self._normal_height, hint.height() + 32)
         x = geom.x() + (geom.width() - w) // 2
-        target_y = geom.y()
+        target_y = geom.y() + 16
 
         self.setGeometry(x, target_y, w, h)
         self.setWindowOpacity(0.0)
@@ -227,15 +227,18 @@ class VoiceOSNotch(QWidget):
         screen = QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
         geom = screen.availableGeometry() if screen else QRect(0, 0, 1920, 1080)
 
-        w = target_width or self.width() or self._width
-        
-        # Dynamic height calculation based on layout content
+        # Dynamic pill dimensions based on container content
         self.container.adjustSize()
-        calc_height = self.container.sizeHint().height() + 10
-        h = max(target_height or self._normal_height, calc_height)
+        hint = self.container.sizeHint()
+        min_w = 460 if self.action_card.isVisible() else 320
+        calc_w = max(min_w, min(hint.width(), 620))
+        w = target_width or (calc_w + 36)
+        
+        calc_h = hint.height() + 32
+        h = max(target_height or self._normal_height, calc_h)
 
         x = geom.x() + (geom.width() - w) // 2
-        y = geom.y()
+        y = geom.y() + 16
 
         target_rect = QRect(x, y, w, h)
 
@@ -259,7 +262,7 @@ class VoiceOSNotch(QWidget):
             self.status_pill.show()
             self.action_card.hide()
             self.clear_pipeline()
-            self.reposition(self._width, self._normal_height)
+            self.reposition()
 
         elif state == "LISTENING":
             self.prompt_label.setText(text or "Listening...")
@@ -267,13 +270,13 @@ class VoiceOSNotch(QWidget):
             self.status_pill.show()
             self.action_card.hide()
             self.clear_pipeline()
-            self.reposition(self._width, self._normal_height)
+            self.reposition()
 
         elif state == "PROCESSING":
-            self.prompt_label.setText(text or "Analyzing intent...")
+            self.prompt_label.setText(text or "Thinking...")
             self.status_pill.setText("🔍 Processing...")
             self.status_pill.show()
-            self.reposition(self._width)
+            self.reposition()
 
         elif state == "EXECUTING":
             self.prompt_label.setText(text or "Performing action...")
@@ -284,26 +287,28 @@ class VoiceOSNotch(QWidget):
             else:
                 self.status_pill.setText("⚡ Executing ✓")
                 self.status_pill.show()
+            self.reposition()
 
         elif state == "SPEAKING":
             self.prompt_label.setText(text)
             self.status_pill.setText("⚡ Speaking...")
             self.status_pill.show()
             self.action_card.hide()
-            self.reposition(self._width)
+            self.reposition()
 
         elif state == "CONFIRMATION_REQUIRED":
             self.prompt_label.setText(text or "Safety approval required")
             self.status_pill.setText("⚠️ Confirm Action")
             self.status_pill.show()
             self.action_card.show()
-            self.reposition(self._width, self._card_height)
+            self.reposition(target_height=self._card_height)
 
         elif state == "ERROR":
             self.prompt_label.setText(text or "Operation failed")
             self.status_pill.setText("✕ Failed")
             self.status_pill.show()
             self.clear_pipeline()
+            self.reposition()
 
     def add_pipeline_step(self, label: str, icon: str, completed: bool = False, bg_color: tuple = (56, 189, 248)):
         """Adds a VoiceOS-style status chip to the action pipeline."""

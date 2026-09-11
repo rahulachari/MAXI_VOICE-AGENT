@@ -1,0 +1,621 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>JARVIS Liquid Orb</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: transparent !important;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      background: transparent !important;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="orb"></canvas>
+  <script type="module">
+    const canvas = document.getElementById("orb");
+
+    // Exact state seeds from the Liquid Orb Neural Plasma preset
+    const stateSeeds = {
+      idle: [
+        1,1,0,
+        0.38,  // speed
+        0.72,  // radius
+        0.495, // zoom
+        2.30,  // warp
+        0.28,  // ridgeAmt
+        2.85,  // sharp
+        0.16,  // shade
+        0.36,  // sheen
+        0.28,  // gloss
+        0.20,  // shellMidAlpha
+        0.22,  // shellEdgeAlpha
+        0.80,  // exposure
+        11,    // style (Neural Plasma)
+        0.005, // edgeSoftness
+        0.0,   // edgeGlow
+        0,     // paletteCount
+        1,     // glassEnabled
+        0.42,  // glassOpacity
+        0.014, // contourDeform
+        2, 0.42, 0.77, 0.23, 65, 0, 0, 1, 0.22, 0.25, 0.72, 5, 0.42, 1.25, 0.55, 0.30, 1.20, 0.70,
+        // colorA
+        0.0157, 0.0078, 0.0392, 1,
+        // colorB
+        0.0314, 0.2784, 0.4471, 1,
+        // colorC
+        0.1098, 0.3412, 0.5647, 1,
+        // colorD
+        0.0902, 0.2941, 0.5176, 1,
+        // highlightColor
+        0.6471, 0.7333, 0.8157, 1,
+        // shellInner
+        1, 1, 1, 1,
+        // shellMid
+        0.0980, 0.3176, 0.7608, 1,
+        // shellEdge
+        0, 0.9137, 1, 1,
+        // sheenColor
+        0.9176, 0.9569, 1, 1,
+        // specColor
+        0.8627, 0.9176, 1, 1,
+        // canvasColor
+        0.0078, 0.0039, 0.0196, 1,
+        // glowColor
+        0.0784, 0.3412, 0.4980, 1
+      ],
+      thinking: [
+        1,1,0,
+        1.35,  // speed (fast, high-energy computation)
+        0.72,  // radius
+        0.55,  // zoom
+        5.40,  // warp
+        0.78,  // ridgeAmt
+        4.20,  // sharp
+        0.16,  // shade
+        0.36,  // sheen
+        0.28,  // gloss
+        0.20,  // shellMidAlpha
+        0.22,  // shellEdgeAlpha
+        1.30,  // exposure
+        11,    // style
+        0.005, // edgeSoftness
+        0.05,  // edgeGlow
+        0,
+        1,     // glassEnabled
+        0.42,  // glassOpacity
+        0.05,  // contourDeform
+        2, 0.42, 0.77, 0.23, 65, 0, 0, 1, 0.22, 0.25, 0.72, 5, 0.42, 1.25, 0.55, 0.30, 1.20, 0.70,
+        // colorA
+        0.0235, 0.0078, 0.0549, 1,
+        // colorB (Electric Cyan Blue)
+        0, 0.60, 1, 1,
+        // colorC
+        0.1451, 0.5451, 1, 1,
+        // colorD
+        0.0745, 0.4588, 1, 1,
+        // highlightColor
+        1, 1, 1, 1,
+        // shellInner
+        1, 1, 1, 1,
+        // shellMid
+        0.0980, 0.3176, 0.7608, 1,
+        // shellEdge
+        0, 0.9137, 1, 1,
+        // sheenColor
+        0.9176, 0.9569, 1, 1,
+        // specColor
+        0.8627, 0.9176, 1, 1,
+        // canvasColor
+        0.0078, 0.0039, 0.0196, 1,
+        // glowColor
+        0, 0.60, 1, 1
+      ],
+      listening: [
+        1,1,0,
+        0.90,  // speed
+        0.72,  // radius
+        0.52,  // zoom
+        3.90,  // warp
+        0.55,  // ridgeAmt
+        3.50,  // sharp
+        0.16,  // shade
+        0.40,  // sheen
+        0.30,  // gloss
+        0.20,  // shellMidAlpha
+        0.25,  // shellEdgeAlpha
+        1.15,  // exposure
+        11,    // style
+        0.005, // edgeSoftness
+        0.12,  // edgeGlow
+        0,
+        1,     // glassEnabled
+        0.45,  // glassOpacity
+        0.035, // contourDeform
+        2, 0.42, 0.77, 0.23, 65, 0, 0, 1, 0.22, 0.25, 0.72, 5, 0.42, 1.25, 0.55, 0.30, 1.20, 0.70,
+        // colorA
+        0.01, 0.03, 0.05, 1,
+        // colorB (Vibrant Aquamarine / Teal)
+        0.0, 0.85, 0.95, 1,
+        // colorC
+        0.1, 0.65, 1.0, 1,
+        // colorD
+        0.05, 0.45, 0.85, 1,
+        // highlightColor
+        1, 1, 1, 1,
+        // shellInner
+        1, 1, 1, 1,
+        // shellMid
+        0.1, 0.5, 0.9, 1,
+        // shellEdge
+        0.0, 0.95, 1.0, 1,
+        // sheenColor
+        0.9, 0.98, 1, 1,
+        // specColor
+        0.85, 0.95, 1, 1,
+        // canvasColor
+        0.005, 0.01, 0.02, 1,
+        // glowColor
+        0.0, 0.85, 1.0, 1
+      ],
+      speaking: [
+        1,1,0,
+        1.15,  // speed
+        0.72,  // radius
+        0.54,  // zoom
+        4.60,  // warp
+        0.65,  // ridgeAmt
+        3.90,  // sharp
+        0.16,  // shade
+        0.38,  // sheen
+        0.28,  // gloss
+        0.20,  // shellMidAlpha
+        0.22,  // shellEdgeAlpha
+        1.22,  // exposure
+        11,    // style
+        0.005, // edgeSoftness
+        0.10,  // edgeGlow
+        0,
+        1,     // glassEnabled
+        0.44,  // glassOpacity
+        0.04,  // contourDeform
+        2, 0.42, 0.77, 0.23, 65, 0, 0, 1, 0.22, 0.25, 0.72, 5, 0.42, 1.25, 0.55, 0.30, 1.20, 0.70,
+        // colorA
+        0.02, 0.01, 0.05, 1,
+        // colorB (Royal Sapphire & Violet waves)
+        0.15, 0.50, 1.0, 1,
+        // colorC
+        0.35, 0.40, 1.0, 1,
+        // colorD
+        0.10, 0.35, 0.90, 1,
+        // highlightColor
+        1, 1, 1, 1,
+        // shellInner
+        1, 1, 1, 1,
+        // shellMid
+        0.2, 0.4, 0.9, 1,
+        // shellEdge
+        0.2, 0.8, 1.0, 1,
+        // sheenColor
+        0.95, 0.95, 1, 1,
+        // specColor
+        0.9, 0.9, 1, 1,
+        // canvasColor
+        0.01, 0.005, 0.02, 1,
+        // glowColor
+        0.15, 0.55, 1.0, 1
+      ],
+      error: [
+        1,1,0,
+        0.60,  // speed
+        0.72,  // radius
+        0.50,  // zoom
+        3.20,  // warp
+        0.60,  // ridgeAmt
+        3.20,  // sharp
+        0.16,  // shade
+        0.35,  // sheen
+        0.28,  // gloss
+        0.20,  // shellMidAlpha
+        0.22,  // shellEdgeAlpha
+        1.10,  // exposure
+        11,    // style
+        0.005, // edgeSoftness
+        0.15,  // edgeGlow
+        0,
+        1,     // glassEnabled
+        0.42,  // glassOpacity
+        0.03,  // contourDeform
+        2, 0.42, 0.77, 0.23, 65, 0, 0, 1, 0.22, 0.25, 0.72, 5, 0.42, 1.25, 0.55, 0.30, 1.20, 0.70,
+        // colorA
+        0.05, 0.01, 0.01, 1,
+        // colorB (Crimson Flame)
+        1.0, 0.25, 0.20, 1,
+        // colorC
+        0.9, 0.15, 0.35, 1,
+        // colorD
+        0.7, 0.10, 0.15, 1,
+        // highlightColor
+        1, 0.8, 0.8, 1,
+        // shellInner
+        1, 1, 1, 1,
+        // shellMid
+        0.8, 0.2, 0.2, 1,
+        // shellEdge
+        1.0, 0.3, 0.2, 1,
+        // sheenColor
+        1, 0.9, 0.9, 1,
+        // specColor
+        1, 0.85, 0.85, 1,
+        // canvasColor
+        0.03, 0.005, 0.005, 1,
+        // glowColor
+        1.0, 0.2, 0.2, 1
+      ]
+    };
+
+    let curState = "thinking";
+    let fromUniforms = [...stateSeeds[curState]];
+    let toUniforms = [...stateSeeds[curState]];
+    let curUniforms = [...stateSeeds[curState]];
+    let transitionStart = performance.now();
+    let transitionDuration = 300;
+    let motionPhase = 0;
+    let lastTime = performance.now();
+    let currentEnergy = 0.0;
+
+    window.liquidOrb = {
+      getState() {
+        return curState;
+      },
+      setState(state) {
+        state = (state || "").toLowerCase();
+        if (state === "processing") state = "thinking";
+        if (!stateSeeds[state] || state === curState) return;
+        fromUniforms = [...curUniforms];
+        toUniforms = [...stateSeeds[state]];
+        curState = state;
+        transitionStart = performance.now();
+        transitionDuration = (state === "thinking" || state === "listening") ? 220 : 600;
+      },
+      setEnergy(energy) {
+        currentEnergy = Math.max(0, Math.min(1, energy));
+      }
+    };
+
+    function startWebGL() {
+      const gl = canvas.getContext("webgl", { alpha: true, premultipliedAlpha: false, antialias: true }) ||
+                 canvas.getContext("experimental-webgl", { alpha: true, premultipliedAlpha: false, antialias: true });
+
+      if (!gl) {
+        console.warn("WebGL not supported");
+        return false;
+      }
+
+      const vsSource = `
+        attribute vec2 position;
+        void main() {
+          gl_Position = vec4(position, 0.0, 1.0);
+        }
+      `;
+
+      const fsSource = `
+        precision highp float;
+        uniform vec2 u_size;
+        uniform float u_time;
+        uniform float u_speed;
+        uniform float u_radius;
+        uniform float u_zoom;
+        uniform float u_warp;
+        uniform float u_ridgeAmt;
+        uniform float u_sharp;
+        uniform float u_shade;
+        uniform float u_sheen;
+        uniform float u_gloss;
+        uniform float u_shellMidAlpha;
+        uniform float u_shellEdgeAlpha;
+        uniform float u_exposure;
+        uniform float u_edgeSoftness;
+        uniform float u_edgeGlow;
+        uniform float u_glassEnabled;
+        uniform float u_glassOpacity;
+        uniform float u_contourDeform;
+        uniform vec4 u_colorA;
+        uniform vec4 u_colorB;
+        uniform vec4 u_colorC;
+        uniform vec4 u_colorD;
+        uniform vec4 u_highlightColor;
+        uniform vec4 u_shellInner;
+        uniform vec4 u_shellMid;
+        uniform vec4 u_shellEdge;
+        uniform vec4 u_sheenColor;
+        uniform vec4 u_specColor;
+        uniform vec4 u_canvasColor;
+        uniform vec4 u_glowColor;
+
+        vec2 glsRotate(vec2 p, float angle) {
+          float c = cos(angle);
+          float s = sin(angle);
+          return vec2(c * p.x - s * p.y, s * p.x + c * p.y);
+        }
+
+        float glsNeuroShape(vec2 pIn, float t) {
+          vec2 p = pIn * (0.34 + 0.08 * u_zoom);
+          vec2 sineAccum = vec2(0.0);
+          vec2 result = vec2(0.0);
+          float scale = 8.0;
+          for (int j = 0; j < 11; j++) {
+            p = glsRotate(p, 1.0);
+            sineAccum = glsRotate(sineAccum, 1.0);
+            vec2 layer = p * scale + vec2(float(j)) + sineAccum - vec2(t * 0.34);
+            sineAccum += sin(layer);
+            result += (vec2(0.5) + 0.5 * cos(layer)) / scale;
+            scale *= 1.16;
+          }
+          return result.x + result.y;
+        }
+
+        vec3 glsPlasmaFluid(vec2 p, float t) {
+          float shape = glsNeuroShape(p, t);
+          float phase = shape * (10.0 + u_warp) + p.x * 1.7 - p.y * 1.3 - t * 0.52;
+          float ridgeWidth = 0.62 - 0.24 * u_ridgeAmt;
+          float primary = pow(abs(cos(phase)), max(1.3, u_sharp * ridgeWidth));
+          float secondary = pow(abs(cos(phase * 0.53 + atan(p.y, p.x) * 2.0 + t * 0.21)), max(1.6, u_sharp * (ridgeWidth + 0.1)));
+          float filaments = max(primary, secondary * 0.64);
+          float core = pow(primary, 4.0);
+          float polarity = 0.5 + 0.5 * sin(phase * 0.37 + shape * 3.0);
+          vec3 color = mix(u_colorA.rgb * 0.42, u_colorD.rgb * 0.48, polarity * 0.46);
+          color = mix(color, u_colorB.rgb, filaments * 0.72);
+          color = mix(color, u_colorC.rgb, core * 0.68);
+          color += u_highlightColor.rgb * pow(core, 3.0) * 0.16;
+          color = color / (vec3(1.0) + color * 0.34);
+
+          color = mix(color, u_highlightColor.rgb, u_shade * 0.22 * smoothstep(0.15, 1.15, dot(p, vec2(-0.32, 0.78))));
+          color *= (1.0 - u_shade * 0.34 * smoothstep(-0.1, 1.2, dot(p, vec2(0.45, -0.62))));
+          color *= (1.0 - u_shade * 0.22 * smoothstep(0.72, 1.08, length(p)));
+          return clamp(color, 0.0, 1.0);
+        }
+
+        float glsRefractionProfile(float t) {
+          float depth = clamp(t, 0.0, 1.0);
+          float circular = sqrt(max(1.0 - (1.0 - depth) * (1.0 - depth), 0.0));
+          return 1.0 - circular;
+        }
+
+        float glsHighlightLobe(vec2 normal, vec2 direction, float cut, float power) {
+          float angular = clamp((dot(normal, direction) - cut) / max(1.0 - cut, 0.001), 0.0, 1.0);
+          return pow(angular, power);
+        }
+
+        vec2 glsContourWave(float angle, float t) {
+          float wave = sin(angle * 3.0 + t * 0.62) * 0.52
+                     + sin(angle * 5.0 - t * 0.41 + 1.7) * 0.31
+                     + sin(angle * 2.0 + t * 0.23 + 3.1) * 0.17;
+          float slope = cos(angle * 3.0 + t * 0.62) * 1.56
+                      + cos(angle * 5.0 - t * 0.41 + 1.7) * 1.55
+                      + cos(angle * 2.0 + t * 0.23 + 3.1) * 0.34;
+          return vec2(wave, slope);
+        }
+
+        float glsContourScale(vec2 uv, float t, float amount) {
+          if (amount <= 0.0) return 1.0;
+          vec2 contour = glsContourWave(atan(uv.y, uv.x), t);
+          return 1.0 + clamp(amount, 0.0, 1.0) * 0.09 * contour.x;
+        }
+
+        vec2 glsContourNormal(vec2 uv, float rad, float t, float amount) {
+          float dist = length(uv);
+          if (dist <= 0.0001) return vec2(0.0);
+          vec2 radial = uv / dist;
+          vec2 contour = glsContourWave(atan(uv.y, uv.x), t);
+          float slope = clamp(amount, 0.0, 1.0) * 0.09 * contour.y;
+          vec2 tangent = vec2(-radial.y, radial.x);
+          return normalize(radial - tangent * (rad * slope / dist));
+        }
+
+        vec3 glsOver(vec3 dst, vec3 src, float a) {
+          float k = clamp(a, 0.0, 1.0);
+          return src * k + dst * (1.0 - k);
+        }
+
+        void main() {
+          vec2 fc = gl_FragCoord.xy;
+          vec2 uv = (2.0 * fc - u_size) / max(min(u_size.x, u_size.y), 1.0);
+          float rad = max(u_radius, 0.05);
+          float t = u_time * u_speed;
+          float contourRad = rad * glsContourScale(uv, t, u_contourDeform);
+          float edgeD = u_edgeSoftness - 0.005;
+
+          float lenUv = length(uv);
+          if (lenUv > contourRad * (1.01 + edgeD)) {
+            if (u_edgeGlow > 0.0) {
+              float outside = smoothstep(contourRad - max(u_edgeSoftness, 0.0005), contourRad + max(u_edgeSoftness, 0.0005), lenUv);
+              vec3 halo = u_glowColor.rgb * (u_edgeGlow * exp(-max(lenUv - contourRad, 0.0) * 11.0) * outside);
+              float haloA = max(halo.r, max(halo.g, halo.b));
+              gl_FragColor = vec4(halo, haloA);
+            } else {
+              gl_FragColor = vec4(0.0);
+            }
+            return;
+          }
+
+          vec2 p = uv / contourRad;
+          float pd = length(p);
+          float clearFa = 1.0 - smoothstep(0.995, 1.04, pd);
+          vec2 normal = glsContourNormal(uv, rad, t, u_contourDeform);
+          float edgeDepth = max(1.0 - pd, 0.0);
+          float refractionWidth = 0.015 + 0.95 * clamp(u_shellMidAlpha, 0.0, 1.0);
+          float refractionT = edgeDepth / max(refractionWidth, 0.001);
+          float refractionProfile = pow(glsRefractionProfile(refractionT), 0.68);
+          float refractionAmount = 1.6 * clamp(u_glassOpacity, 0.0, 1.0) * refractionProfile;
+          vec2 refractedP = p - normal * refractionAmount;
+
+          vec3 fcol = vec3(0.0);
+          if (clearFa > 0.0) {
+            if (u_glassEnabled > 0.5) {
+              float channelSplit = 0.14 * clamp(u_gloss, 0.0, 2.0) * clamp(u_glassOpacity, 0.0, 1.0) * refractionProfile;
+              vec3 redSample = glsPlasmaFluid(refractedP - normal * channelSplit, t);
+              vec3 greenSample = glsPlasmaFluid(refractedP, t);
+              vec3 blueSample = glsPlasmaFluid(refractedP + normal * channelSplit, t);
+              fcol = vec3(redSample.r, greenSample.g, blueSample.b);
+            } else {
+              fcol = glsPlasmaFluid(p, t);
+            }
+          }
+
+          float lum = dot(fcol, vec3(0.213, 0.715, 0.072));
+          vec3 clearSat = clamp(vec3(lum) + (fcol - vec3(lum)) * 1.22, 0.0, 1.0);
+          vec3 col = glsOver(u_canvasColor.rgb, clearSat, 0.99 * clearFa);
+
+          if (u_glassEnabled > 0.5) {
+            float surfaceWidth = 0.026 + 0.055 * clamp(u_shellEdgeAlpha, 0.0, 1.0);
+            float surfaceBand = (1.0 - smoothstep(0.0, surfaceWidth, edgeDepth)) * clearFa;
+            float opticalRim = pow(surfaceBand, 1.8);
+            float innerRimAlpha = opticalRim * u_glassOpacity * 0.45;
+            col = glsOver(col, u_shellInner.rgb, innerRimAlpha);
+
+            vec2 coolDirection = normalize(vec2(0.84, 0.54));
+            vec2 warmDirection = normalize(vec2(-0.62, -0.78));
+            float coolSplit = glsHighlightLobe(normal, coolDirection, -0.32, 1.8);
+            float warmSplit = glsHighlightLobe(normal, warmDirection, -0.28, 2.0);
+            float dispersion = opticalRim * clamp(u_gloss, 0.0, 2.0) * (0.8 + 0.8 * u_shellEdgeAlpha);
+            col = glsOver(col, u_shellMid.rgb, dispersion * coolSplit);
+            col = glsOver(col, u_shellEdge.rgb, dispersion * warmSplit);
+
+            float edgeShadow = opticalRim * (0.015 + 0.15 * u_shellEdgeAlpha) * (0.15 + 0.85 * max(dot(normal, vec2(0.45, -0.89)), 0.0));
+            col *= (1.0 - edgeShadow);
+
+            vec2 keyDirection = normalize(vec2(-0.68, 0.73));
+            vec2 fillDirection = normalize(vec2(0.74, -0.67));
+            float key = opticalRim * glsHighlightLobe(normal, keyDirection, 0.2, 2.8) * clamp(u_sheen, 0.0, 2.0) * 1.4;
+            float fill = opticalRim * glsHighlightLobe(normal, fillDirection, 0.4, 3.6) * clamp(u_sheen, 0.0, 2.0) * 1.0;
+            col = glsOver(col, u_sheenColor.rgb, key);
+            col = glsOver(col, u_specColor.rgb, fill);
+          }
+
+          float ballA = 1.0 - smoothstep(0.99 - edgeD, 1.01 + edgeD, pd);
+          col = clamp(col * max(u_exposure, 0.0), 0.0, 1.0) * ballA;
+          gl_FragColor = vec4(col, ballA);
+        }
+      `;
+
+      function compileShader(src, type) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, src);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+          console.error(gl.getShaderInfoLog(shader));
+          return null;
+        }
+        return shader;
+      }
+
+      const program = gl.createProgram();
+      gl.attachShader(program, compileShader(vsSource, gl.VERTEX_SHADER));
+      gl.attachShader(program, compileShader(fsSource, gl.FRAGMENT_SHADER));
+      gl.linkProgram(program);
+
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        console.error(gl.getProgramInfoLog(program));
+        return false;
+      }
+
+      const buffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+        -1, -1,
+         3, -1,
+        -1,  3
+      ]), gl.STATIC_DRAW);
+
+      const posLoc = gl.getAttribLocation(program, "position");
+      gl.enableVertexAttribArray(posLoc);
+      gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+      function render(now) {
+        const p = Math.min(1.0, (now - transitionStart) / transitionDuration);
+        const ease = curState === "thinking" ? 1 - Math.pow(1 - p, 3) : p * p * (3 - 2 * p);
+        for (let i = 0; i < curUniforms.length; i++) {
+          curUniforms[i] = fromUniforms[i] + (toUniforms[i] - fromUniforms[i]) * ease;
+        }
+
+        const dt = Math.min(0.1, (now - lastTime) / 1000);
+        lastTime = now;
+        
+        // Energy adds responsive dynamic modulation
+        const dynamicSpeed = curUniforms[3] * (1.0 + currentEnergy * 0.7);
+        motionPhase += dt * dynamicSpeed;
+
+        const dynamicWarp = curUniforms[6] + currentEnergy * 1.5;
+        const dynamicExposure = curUniforms[14] + currentEnergy * 0.3;
+
+        const w = canvas.clientWidth || 64;
+        const h = canvas.clientHeight || 64;
+        if (canvas.width !== w || canvas.height !== h) {
+          canvas.width = w;
+          canvas.height = h;
+          gl.viewport(0, 0, w, h);
+        }
+
+        gl.useProgram(program);
+        gl.uniform2f(gl.getUniformLocation(program, "u_size"), w, h);
+        gl.uniform1f(gl.getUniformLocation(program, "u_time"), motionPhase / Math.max(dynamicSpeed, 0.001));
+        gl.uniform1f(gl.getUniformLocation(program, "u_speed"), dynamicSpeed);
+        gl.uniform1f(gl.getUniformLocation(program, "u_radius"), curUniforms[4]);
+        gl.uniform1f(gl.getUniformLocation(program, "u_zoom"), curUniforms[5]);
+        gl.uniform1f(gl.getUniformLocation(program, "u_warp"), dynamicWarp);
+        gl.uniform1f(gl.getUniformLocation(program, "u_ridgeAmt"), curUniforms[7]);
+        gl.uniform1f(gl.getUniformLocation(program, "u_sharp"), curUniforms[8]);
+        gl.uniform1f(gl.getUniformLocation(program, "u_shade"), curUniforms[9]);
+        gl.uniform1f(gl.getUniformLocation(program, "u_sheen"), curUniforms[10]);
+        gl.uniform1f(gl.getUniformLocation(program, "u_gloss"), curUniforms[11]);
+        gl.uniform1f(gl.getUniformLocation(program, "u_shellMidAlpha"), curUniforms[12]);
+        gl.uniform1f(gl.getUniformLocation(program, "u_shellEdgeAlpha"), curUniforms[13]);
+        gl.uniform1f(gl.getUniformLocation(program, "u_exposure"), dynamicExposure);
+        gl.uniform1f(gl.getUniformLocation(program, "u_edgeSoftness"), curUniforms[16]);
+        gl.uniform1f(gl.getUniformLocation(program, "u_edgeGlow"), curUniforms[17]);
+        gl.uniform1f(gl.getUniformLocation(program, "u_glassEnabled"), curUniforms[19]);
+        gl.uniform1f(gl.getUniformLocation(program, "u_glassOpacity"), curUniforms[20]);
+        gl.uniform1f(gl.getUniformLocation(program, "u_contourDeform"), curUniforms[21]);
+
+        gl.uniform4f(gl.getUniformLocation(program, "u_colorA"), curUniforms[40], curUniforms[41], curUniforms[42], curUniforms[43]);
+        gl.uniform4f(gl.getUniformLocation(program, "u_colorB"), curUniforms[44], curUniforms[45], curUniforms[46], curUniforms[47]);
+        gl.uniform4f(gl.getUniformLocation(program, "u_colorC"), curUniforms[48], curUniforms[49], curUniforms[50], curUniforms[51]);
+        gl.uniform4f(gl.getUniformLocation(program, "u_colorD"), curUniforms[52], curUniforms[53], curUniforms[54], curUniforms[55]);
+        gl.uniform4f(gl.getUniformLocation(program, "u_highlightColor"), curUniforms[56], curUniforms[57], curUniforms[58], curUniforms[59]);
+        gl.uniform4f(gl.getUniformLocation(program, "u_shellInner"), curUniforms[60], curUniforms[61], curUniforms[62], curUniforms[63]);
+        gl.uniform4f(gl.getUniformLocation(program, "u_shellMid"), curUniforms[64], curUniforms[65], curUniforms[66], curUniforms[67]);
+        gl.uniform4f(gl.getUniformLocation(program, "u_shellEdge"), curUniforms[68], curUniforms[69], curUniforms[70], curUniforms[71]);
+        gl.uniform4f(gl.getUniformLocation(program, "u_sheenColor"), curUniforms[72], curUniforms[73], curUniforms[74], curUniforms[75]);
+        gl.uniform4f(gl.getUniformLocation(program, "u_specColor"), curUniforms[76], curUniforms[77], curUniforms[78], curUniforms[79]);
+        gl.uniform4f(gl.getUniformLocation(program, "u_canvasColor"), curUniforms[80], curUniforms[81], curUniforms[82], curUniforms[83]);
+        gl.uniform4f(gl.getUniformLocation(program, "u_glowColor"), curUniforms[84], curUniforms[85], curUniforms[86], curUniforms[87]);
+
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        requestAnimationFrame(render);
+      }
+
+      requestAnimationFrame(render);
+      return true;
+    }
+
+    startWebGL();
+  </script>
+</body>
+</html>
