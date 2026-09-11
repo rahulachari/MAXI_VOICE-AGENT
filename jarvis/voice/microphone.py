@@ -27,13 +27,15 @@ class MicrophoneRecorder:
         self.is_recording = False
         self._stream: Optional[sd.InputStream] = None
         self._audio_frames: list[np.ndarray] = []
+        self.push_to_talk = False
         self._lock = threading.Lock()
 
-    def start_listening(self):
+    def start_listening(self, push_to_talk: bool = False):
         with self._lock:
             if self.is_recording:
                 return
 
+            self.push_to_talk = push_to_talk
             self._audio_frames = []
             self.vad.reset()
             self.is_recording = True
@@ -64,8 +66,9 @@ class MicrophoneRecorder:
         if self.energy_callback:
             self.energy_callback(energy)
 
-        if is_finished:
-            # Silence detected after speech: complete recording
+        # In push-to-talk mode, only key release triggers finish
+        if is_finished and not self.push_to_talk:
+            # Silence detected after speech in hands-free mode: complete recording
             threading.Thread(target=self.stop_listening, daemon=True).start()
 
     def stop_listening(self) -> Optional[np.ndarray]:

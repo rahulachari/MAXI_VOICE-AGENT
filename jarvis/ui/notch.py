@@ -230,8 +230,10 @@ class VoiceOSNotch(QWidget):
         # Dynamic pill dimensions based on container content
         self.container.adjustSize()
         hint = self.container.sizeHint()
-        min_w = 460 if self.action_card.isVisible() else 320
-        calc_w = max(min_w, min(hint.width(), 620))
+        min_w = 460 if self.action_card.isVisible() else 340
+        if len(self.prompt_label.text()) > 60:
+            min_w = max(min_w, 620)
+        calc_w = max(min_w, min(hint.width(), 700))
         w = target_width or (calc_w + 36)
         
         calc_h = hint.height() + 32
@@ -257,7 +259,10 @@ class VoiceOSNotch(QWidget):
         self.orb.set_state(state)
 
         if state == "IDLE":
-            self.prompt_label.setText("What can I do for you?")
+            if text and text != "Ready • Hold Ctrl+Alt to speak":
+                self.prompt_label.setText(text)
+            else:
+                self.prompt_label.setText("What can I do for you?")
             self.status_pill.setText("⚡ Ready • Hold Ctrl+Alt to speak")
             self.status_pill.show()
             self.action_card.hide()

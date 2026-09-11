@@ -21,6 +21,8 @@ POPULAR_SITES = {
     "chat gpt": "https://chatgpt.com",
     "gmail": "https://mail.google.com",
     "linkedin": "https://www.linkedin.com",
+    "linked in": "https://www.linkedin.com",
+    "linked-in": "https://www.linkedin.com",
     "spotify": "https://open.spotify.com",
     "instagram": "https://www.instagram.com",
     "facebook": "https://www.facebook.com",
@@ -69,22 +71,29 @@ class LocalSemanticEngine:
                 confirmation_prompt="I am JARVIS, your desktop voice operating system assistant. I can open apps, search the web, send messages, write emails, control your system, and much more.",
             )
 
-        # 3. System Time & Date
-        if text in ["what time is it", "tell me the time", "what is the time", "current time", "time"]:
-            current_time = datetime.now().strftime("%I:%M %p")
+        # 3. System Time & Date (instant response with human phrasing)
+        if re.search(r"\b(?:what(?:'s|\s+is)\s+the\s+time|tell\s+me\s+the\s+time|what\s+time\s+is\s+it|time\s+now|current\s+time)\b", text):
+            current_time = datetime.now().strftime("%I:%M %p").lstrip("0")
+            current_date = datetime.now().strftime("%A, %B %d")
             return Intent(
                 category=IntentCategory.AI_QUERY,
                 action="query",
-                params={"query": transcript},
-                confirmation_prompt=f"It is currently {current_time}.",
+                params={
+                    "query": transcript,
+                    "full_details": f"The time is {current_time}.\nToday is {current_date}.",
+                },
+                confirmation_prompt=f"It's {current_time} right now.",
             )
 
-        if text in ["what date is today", "what is today's date", "what's today's date", "today's date", "what day is it", "what is the date"]:
+        if re.search(r"\b(?:what\s+(?:is\s+)?(?:today'?s\s+)?date|what\s+day\s+is\s+it|today'?s\s+date|what\s+is\s+the\s+date)\b", text):
             current_date = datetime.now().strftime("%A, %B %d, %Y")
             return Intent(
                 category=IntentCategory.AI_QUERY,
                 action="query",
-                params={"query": transcript},
+                params={
+                    "query": transcript,
+                    "full_details": f"Today is {current_date}.",
+                },
                 confirmation_prompt=f"Today is {current_date}.",
             )
 
@@ -337,11 +346,15 @@ class LocalSemanticEngine:
         # 16. Popular Website Direct Launching
         # ===================================================================
 
+        # Clean text for website checks
+        clean_web_text = re.sub(r"^(?:please\s+|can\s+you\s+)?(?:open|launch|go\s+to|take\s+me\s+to)\s+(?:the\s+)?", "", text).strip()
+        clean_web_text = re.sub(r"\s+please$", "", clean_web_text).strip()
+
         for site_name, site_url in POPULAR_SITES.items():
-            if text == f"open {site_name}" or text == f"go to {site_name}" or text == f"launch {site_name}":
+            if clean_web_text == site_name or text == f"open {site_name}" or text == f"go to {site_name}" or text == f"launch {site_name}":
                 if site_name == "youtube":
                     return Intent(category=IntentCategory.WEB_NAVIGATION, target="YouTube", action="open_youtube")
-                return Intent(category=IntentCategory.WEB_NAVIGATION, target=site_name.title(), action="open_url", params={"url": site_url})
+                return Intent(category=IntentCategory.WEB_NAVIGATION, target=site_name.replace(" ", "").title(), action="open_url", params={"url": site_url})
 
         # ===================================================================
         # 17. YouTube & Web Searches
@@ -512,52 +525,80 @@ class LocalSemanticEngine:
         # 23. Reminders (spoken acknowledgment)
         # ===================================================================
 
-        remind_match = re.search(r"remind\s+me\s+(?:to\s+)?(.+?)(?:\s+in\s+(\d+)\s+(minutes?|hours?|seconds?))?$", text)
-        if remind_match:
-            task = remind_match.group(1).strip()
-            amount = int(remind_match.group(2)) if remind_match.group(2) else 5
-            unit = remind_match.group(3) or "minutes"
-            return Intent(
-                category=IntentCategory.REMINDER,
-                action="set_reminder",
-                params={"task": task, "amount": amount, "unit": unit},
-            )
-
         # ===================================================================
-        # 24. Calculations & conversions
+        # 23. Calendar & Scheduled Reminders
         # ===================================================================
 
-        calc_match = re.search(r"(?:what is|what's|calculate|compute)\s+([\d\s\+\-\*\/\.\(\)%]+)$", text)
-        if calc_match:
-            expr = calc_match.group(1).strip()
-            try:
-                result = eval(expr)  # noqa: S307 - safe: only digits and operators
-                return Intent(
-                    category=IntentCategory.AI_QUERY,
-                    action="query",
-                    params={"query": transcript},
-                    confirmation_prompt=f"The answer is {result}.",
-                )
-            except Exception:
-                pass
+        if "calendar" in text:
+            if text in ["open calendar", "show my calendar", "calendar", "launch calendar"]:
+                return Intent(category=IntentCategory.CALENDAR, action="open_calendar")
 
-        # ===================================================================
-        # 25. Calendar
-        # ===================================================================
+            # Handle commands like "open calendar and remind me at 9:00 I need to go for ration"
+            time_match = re.search(r"\b(?:at|for)\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\b", text)
+            event_time = time_match.group(1) if time_match else "9:00 AM"
 
-        if text in ["open calendar", "show my calendar", "calendar"]:
-            return Intent(category=IntentCategory.CALENDAR, action="open_calendar")
+            title = text
+            title = re.sub(r"^(?:please\s+)?(?:open\s+calendar\s+and\s+)?", "", title)
+            title = re.sub(r"^(?:remind\s+me\s+|add\s+(?:an?\s+)?(?:event|reminder|task)\s+(?:to\s+)?|schedule\s+)?", "", title)
+            if time_match:
+                title = re.sub(r"\b(?:at|for)\s+" + re.escape(time_match.group(1)) + r"\b", "", title)
+            title = re.sub(r"^(?:to\s+|that\s+|i\s+need\s+to\s+)", "", title).strip()
+            if not title:
+                title = "Reminder"
 
-        cal_match = re.search(r"schedule\s+a\s+meeting\s+with\s+(.+?)\s+on\s+(.+?)(?:\s+at\s+(.+))?$", text)
-        if cal_match:
+            title_clean = title.capitalize()
             return Intent(
                 category=IntentCategory.CALENDAR,
                 action="create_event",
                 params={
-                    "title": f"Meeting with {cal_match.group(1)}",
-                    "date": cal_match.group(2).strip(),
-                    "time": cal_match.group(3).strip() if cal_match.group(3) else ""
+                    "title": title_clean,
+                    "time": event_time,
+                    "date": "today",
+                    "full_details": f"Calendar Event: {title_clean}\nTime: {event_time}\nStatus: Scheduled & Opened in Calendar"
+                },
+                confirmation_prompt=f"I've opened your calendar and set a reminder for {title_clean} at {event_time}."
+            )
+
+        cal_meeting_match = re.search(r"schedule\s+a\s+meeting\s+with\s+(.+?)\s+on\s+(.+?)(?:\s+at\s+(.+))?$", text)
+        if cal_meeting_match:
+            return Intent(
+                category=IntentCategory.CALENDAR,
+                action="create_event",
+                params={
+                    "title": f"Meeting with {cal_meeting_match.group(1)}",
+                    "date": cal_meeting_match.group(2).strip(),
+                    "time": cal_meeting_match.group(3).strip() if cal_meeting_match.group(3) else "",
                 }
+            )
+
+        # Standalone reminders with clock time
+        remind_clock_match = re.search(r"remind\s+me\s+(?:at\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\s+)?(?:to\s+|that\s+|i\s+need\s+to\s+)?(.+)", text)
+        if remind_clock_match and remind_clock_match.group(1):
+            event_time = remind_clock_match.group(1)
+            task_title = remind_clock_match.group(2).strip().capitalize()
+            return Intent(
+                category=IntentCategory.CALENDAR,
+                action="create_event",
+                params={
+                    "title": task_title,
+                    "time": event_time,
+                    "date": "today",
+                    "full_details": f"Reminder: {task_title}\nTime: {event_time}\nStatus: Scheduled in Calendar"
+                },
+                confirmation_prompt=f"I've scheduled a reminder to {task_title} at {event_time}."
+            )
+
+        # Relative timer reminders: "remind me to call mom in 10 minutes"
+        remind_match = re.search(r"remind\s+me\s+(?:to\s+)?(.+?)\s+in\s+(\d+)\s+(minutes?|hours?|seconds?)$", text)
+        if remind_match:
+            task = remind_match.group(1).strip()
+            amount = int(remind_match.group(2))
+            unit = remind_match.group(3)
+            return Intent(
+                category=IntentCategory.REMINDER,
+                action="set_reminder",
+                params={"task": task, "amount": amount, "unit": unit},
+                confirmation_prompt=f"I'll remind you to {task} in {amount} {unit}."
             )
 
         # ===================================================================

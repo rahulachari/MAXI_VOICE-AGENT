@@ -36,35 +36,6 @@ def pcm_to_wav_bytes(audio_data: np.ndarray, sample_rate: int = 16000) -> bytes:
     return byte_io.getvalue()
 
 
-class GroqWhisperSTT(SpeechToTextProvider):
-    def __init__(self, api_key: str = None):
-        self.api_key = api_key or config.get("groq_api_key")
-        self._client = None
-
-    def _get_client(self):
-        if not self._client and self.api_key:
-            from groq import Groq
-            self._client = Groq(api_key=self.api_key)
-        return self._client
-
-    def transcribe(self, audio_data: np.ndarray, sample_rate: int = 16000) -> str:
-        client = self._get_client()
-        if not client:
-            raise ValueError("Groq API key not configured for Whisper STT.")
-
-        wav_bytes = pcm_to_wav_bytes(audio_data, sample_rate)
-        audio_file = ("audio.wav", wav_bytes, "audio/wav")
-
-        transcription = client.audio.transcriptions.create(
-            model="whisper-large-v3-turbo",
-            file=audio_file,
-            response_format="text",
-            temperature=0.0,
-            language="en",
-        )
-        return str(transcription).strip()
-
-
 class GoogleSTT(SpeechToTextProvider):
     def __init__(self):
         self.recognizer = sr.Recognizer()
@@ -77,7 +48,8 @@ class GoogleSTT(SpeechToTextProvider):
             audio = self.recognizer.record(source)
 
         try:
-            return self.recognizer.recognize_google(audio)
+            text = self.recognizer.recognize_google(audio)
+            return text.strip()
         except sr.UnknownValueError:
             return ""
         except sr.RequestError as e:
@@ -86,13 +58,5 @@ class GoogleSTT(SpeechToTextProvider):
 
 
 def get_stt_provider() -> SpeechToTextProvider:
-    provider_name = config.get("stt_provider", "groq_whisper")
-    groq_key = config.get("groq_api_key")
-
-    if provider_name == "groq_whisper" and groq_key:
-        try:
-            return GroqWhisperSTT(groq_key)
-        except Exception as e:
-            print(f"[STT] Failed to initialize Groq STT, falling back to Google: {e}")
-
     return GoogleSTT()
+

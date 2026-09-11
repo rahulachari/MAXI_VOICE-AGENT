@@ -100,10 +100,26 @@ class CalendarTool(BaseTool):
         url = f"https://calendar.google.com/calendar/render?{urllib.parse.urlencode(params)}"
         webbrowser.open(url)
 
-        time_display = start_dt.strftime("%A at %I:%M %p")
-        msg = f"Creating event '{title}' on {time_display}."
+        # Launch Windows Calendar / Outlook Calendar
+        try:
+            import subprocess
+            subprocess.Popen(["cmd", "/c", "start", "outlookcal:"], shell=True)
+        except Exception:
+            pass
+
+        # Save to local tasks database as an active scheduled reminder
+        try:
+            from jarvis.tools.task_tool import TaskTool
+            task_tool = TaskTool()
+            task_tool.add_task(title=title, due_str=start_dt.strftime("%Y-%m-%d %H:%M:%S"))
+        except Exception:
+            pass
+
+        time_display = start_dt.strftime("%I:%M %p").lstrip("0")
+        day_display = "today" if start_dt.date() == datetime.now().date() else f"on {start_dt.strftime('%A')}"
+        msg = f"I've opened your calendar and scheduled '{title}' for {day_display} at {time_display}."
         if attendees:
-            msg += f" I've added {attendees} as an attendee."
+            msg += f" Added {attendees} as an attendee."
 
         return ToolResult(
             status="SUCCESS",

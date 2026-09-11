@@ -139,7 +139,7 @@ class LifecycleManager(QObject):
         self.sig_set_state.emit("LISTENING", "Listening...")
 
         if not self.recorder.is_recording:
-            self.recorder.start_listening()
+            self.recorder.start_listening(push_to_talk=True)
 
     def on_hotkey_up(self, duration: float):
         """Called as soon as Ctrl+Alt is released (Push-to-Talk end)."""
@@ -166,7 +166,7 @@ class LifecycleManager(QObject):
         # If TTS is speaking, pause the voice, but KEEP the notch visible so the user can read!
         if tts_engine.is_speaking():
             tts_engine.stop()
-            self.sig_set_state.emit("IDLE", "Speech paused.")
+            self.sig_set_state.emit("IDLE", self.notch.prompt_label.text())
             return
 
         # If currently analyzing or executing an action, ignore clicks to prevent conflicting sessions
@@ -183,7 +183,7 @@ class LifecycleManager(QObject):
             self._pending_confirmation = False
             self.sig_popup.emit()
             self.sig_set_state.emit("LISTENING", "Listening...")
-            self.recorder.start_listening()
+            self.recorder.start_listening(push_to_talk=False)
 
     @Slot()
     def toggle_history(self):
@@ -214,8 +214,7 @@ class LifecycleManager(QObject):
 
             if not transcript or not transcript.strip():
                 self.sig_set_state.emit("IDLE", "I couldn't hear you.")
-                time.sleep(1.2)
-                self.sig_disappear.emit()
+                time.sleep(1.8)
                 self.sig_set_state.emit("IDLE", "Ready • Hold Ctrl+Alt to speak")
                 return
 
@@ -252,6 +251,7 @@ class LifecycleManager(QObject):
 
     def _process_result(self, intent, result, transcript: str):
         status_text = result.message
+        full_details = intent.params.get("full_details") or status_text
 
         # Multi-step pipeline tracking
         if result.next_steps:
@@ -265,15 +265,15 @@ class LifecycleManager(QObject):
                 time.sleep(1.0) # simulate processing step
                 self.sig_action_step.emit(f"Step {step_count}: {next_step}", "⚡", True)
 
-            self.sig_set_state.emit("SPEAKING", status_text)
-            if result.is_success():
-                self.sig_set_state.emit("SPEAKING", status_text)
-            else:
-                self.sig_set_state.emit("ERROR", status_text)
+        # Immediately display full details in top notch HUD
+        if result.is_success():
+            self.sig_set_state.emit("SPEAKING", full_details)
+        else:
+            self.sig_set_state.emit("ERROR", status_text)
 
         # Feed turn into Chat Composer Thread
         try:
-            self.sidebar.add_chat_turn(transcript, status_text)
+            self.sidebar.add_chat_turn(transcript, full_details)
         except Exception as e:
             print(f"[Lifecycle] Failed to add chat turn: {e}")
 
@@ -281,7 +281,7 @@ class LifecycleManager(QObject):
         if config.get("save_history", True):
             self.history_repo.log_interaction(
                 command_text=transcript,
-                response_text=status_text,
+                response_text=full_details,
                 tool=str(intent.category.value),
                 action=intent.action,
                 params=intent.params,
@@ -289,15 +289,15 @@ class LifecycleManager(QObject):
                 result_summary=status_text,
             )
 
-        # Spoken response with barge-in support and auto-disappear upon completion
-        def on_tts_finish():
-            # Keep notch visible for 2.5s after audio finishes so user can read the response
-            time.sleep(2.5)
-            if not tts_engine.is_speaking() and not self.recorder.is_recording:
-                self.sig_disappear.emit()
-                self.sig_set_state.emit("IDLE", "Ready • Hold Ctrl+Alt to speak")
+        # Spoken response with Gemini Lyra voice
+        spoken_text = intent.confirmation_prompt or status_text
 
-        tts_engine.speak(status_text, on_finish=on_tts_finish)
+        def on_tts_finish():
+            # Keep notch open so the user can read the complete response
+            # Hotkey / mic listener is ready for next input without disappearing
+            self.sig_set_state.emit("IDLE", full_details)
+
+        tts_engine.speak(spoken_text, on_finish=on_tts_finish)
 
     def _on_action_confirmed(self):
         if self._pending_intent:

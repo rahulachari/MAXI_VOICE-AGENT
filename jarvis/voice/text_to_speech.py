@@ -115,13 +115,21 @@ class TextToSpeechEngine:
                 self._is_speaking = True
                 
                 success = False
-                # 1. Try high-definition neural voice first
-                try:
-                    success = self._speak_neural(clean_text)
-                except Exception as e:
-                    print(f"[TTS] Neural TTS failed, falling back to SAPI5: {e}")
+                # 1. Try Google Gemini Lyra voice first
+                if config.get("gemini_api_key"):
+                    try:
+                        success = self._speak_gemini_lyra(clean_text)
+                    except Exception as e:
+                        print(f"[TTS] Gemini Lyra TTS failed, falling back to neural: {e}")
 
-                # 2. Fallback to offline SAPI5 if neural fails and stop was not requested
+                # 2. Fallback to high-definition edge neural voice
+                if not success and not self._stop_event.is_set():
+                    try:
+                        success = self._speak_neural(clean_text)
+                    except Exception as e:
+                        print(f"[TTS] Neural TTS failed, falling back to SAPI5: {e}")
+
+                # 3. Fallback to offline SAPI5 if neural fails and stop was not requested
                 if not success and not self._stop_event.is_set():
                     self._speak_sapi5(clean_text)
 
@@ -131,6 +139,84 @@ class TextToSpeechEngine:
 
         self._current_thread = threading.Thread(target=_worker, daemon=True)
         self._current_thread.start()
+
+    def _speak_gemini_lyra(self, text: str) -> bool:
+        """Synthesizes speech using Google Gemini Lyra voice and plays via pygame mixer."""
+        gemini_key = config.get("gemini_api_key")
+        if not gemini_key:
+            return False
+
+        temp_wav = os.path.join(tempfile.gettempdir(), f"jarvis_lyra_{int(time.time()*1000)}.wav")
+        import urllib.request
+        import base64
+        import wave
+        import json
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-tts-preview:generateContent?key={gemini_key}"
+        payload = {
+            "contents": [{"parts": [{"text": text}]}],
+            "generationConfig": {
+                "response_modalities": ["AUDIO"],
+                "speech_config": {
+                    "voice_config": {
+                        "prebuilt_voice_config": {
+                            "voice_name": "Lyra"
+                        }
+                    }
+                }
+            }
+        }
+        data_bytes = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=data_bytes,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            candidates = data.get("candidates", [])
+            if not candidates:
+                return False
+            parts = candidates[0].get("content", {}).get("parts", [])
+            if not parts:
+                return False
+            inline_data = parts[0].get("inlineData", {})
+            b64_audio = inline_data.get("data")
+            if not b64_audio:
+                return False
+            raw_pcm = base64.b64decode(b64_audio)
+
+        if self._stop_event.is_set():
+            return False
+
+        with wave.open(temp_wav, "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(24000)
+            wf.writeframes(raw_pcm)
+
+        if self._stop_event.is_set():
+            _safe_cleanup(temp_wav)
+            return False
+
+        pygame.mixer.music.load(temp_wav)
+        pygame.mixer.music.play()
+
+        while pygame.mixer.music.get_busy():
+            if self._stop_event.is_set():
+                pygame.mixer.music.stop()
+                pygame.mixer.music.unload()
+                break
+            time.sleep(0.02)
+
+        try:
+            pygame.mixer.music.unload()
+        except Exception:
+            pass
+        _safe_cleanup(temp_wav)
+        return True
 
     def _speak_neural(self, text: str) -> bool:
         """Synthesizes speech using edge-tts and plays via pygame mixer."""
