@@ -73,6 +73,7 @@ class TextToSpeechEngine:
         self._is_speaking = False
         self._current_thread: Optional[threading.Thread] = None
         self._voice = config.get("voice_name") or DEFAULT_NEURAL_VOICE
+        self._sapi5_engine = None
 
     def is_speaking(self) -> bool:
         return self._is_speaking
@@ -86,6 +87,11 @@ class TextToSpeechEngine:
                 pygame.mixer.music.unload()
         except Exception:
             pass
+        if self._sapi5_engine:
+            try:
+                self._sapi5_engine.stop()
+            except Exception:
+                pass
         self._is_speaking = False
 
     def speak(self, text: str, on_finish: Optional[Callable[[], None]] = None):
@@ -115,7 +121,7 @@ class TextToSpeechEngine:
                 except Exception as e:
                     print(f"[TTS] Neural TTS failed, falling back to SAPI5: {e}")
 
-                # 2. Fallback to offline SAPI5 if neural fails or offline
+                # 2. Fallback to offline SAPI5 if neural fails and stop was not requested
                 if not success and not self._stop_event.is_set():
                     self._speak_sapi5(clean_text)
 
@@ -153,8 +159,9 @@ class TextToSpeechEngine:
         while pygame.mixer.music.get_busy():
             if self._stop_event.is_set():
                 pygame.mixer.music.stop()
+                pygame.mixer.music.unload()
                 break
-            time.sleep(0.04)
+            time.sleep(0.02)
 
         try:
             pygame.mixer.music.unload()
@@ -166,9 +173,13 @@ class TextToSpeechEngine:
 
     def _speak_sapi5(self, text: str):
         """Offline fallback using Windows SAPI5 with female voice preference."""
+        if self._stop_event.is_set():
+            return
+
         pythoncom.CoInitialize()
         try:
             engine = pyttsx3.init()
+            self._sapi5_engine = engine
             rate = config.get("tts_rate", 190)
             volume = config.get("tts_volume", 1.0)
             engine.setProperty("rate", rate)

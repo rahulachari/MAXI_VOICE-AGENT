@@ -84,6 +84,7 @@ class LifecycleManager(QObject):
         self.notch.clicked.connect(self.toggle_session)
         self.notch.confirmed.connect(self._on_action_confirmed)
         self.notch.cancelled.connect(self._on_action_cancelled)
+        self.notch.close_requested.connect(self.dismiss_notch)
 
         # Tray signals
         self.tray.activate_requested.connect(self.toggle_session)
@@ -150,13 +151,25 @@ class LifecycleManager(QObject):
             print(f"[Lifecycle] Hotkey tap detected ({duration:.2f}s). Keeping listener active...")
 
     @Slot()
+    def dismiss_notch(self):
+        """Immediately silences speech, cancels recording, and smoothly dismisses the notch."""
+        tts_engine.stop()
+        if self.recorder.is_recording:
+            self.recorder.stop_listening()
+        self.sig_disappear.emit()
+        self.sig_set_state.emit("IDLE", "Ready • Hold Ctrl+Alt to speak")
+
+    @Slot()
     def toggle_session(self):
-        """Called when user clicks notch or tray icon."""
-        # Barge-in check: If TTS is speaking, interrupt it immediately and disappear!
+        """Called when user clicks the orb or tray icon."""
+        # If TTS is speaking, pause the voice, but KEEP the notch visible so the user can read!
         if tts_engine.is_speaking():
             tts_engine.stop()
-            self.sig_set_state.emit("IDLE", "Stopped.")
-            QTimer.singleShot(500, self.sig_disappear.emit)
+            self.sig_set_state.emit("IDLE", "Speech paused.")
+            return
+
+        # If currently analyzing or executing an action, ignore clicks to prevent conflicting sessions
+        if self.notch._state in ["PROCESSING", "EXECUTING"]:
             return
 
         if self.recorder.is_recording:

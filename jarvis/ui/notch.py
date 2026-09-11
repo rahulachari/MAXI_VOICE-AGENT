@@ -23,6 +23,7 @@ class VoiceOSNotch(QWidget):
     clicked = Signal()
     confirmed = Signal()
     cancelled = Signal()
+    close_requested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -62,12 +63,12 @@ class VoiceOSNotch(QWidget):
         container_layout.setContentsMargins(18, 12, 18, 14)
         container_layout.setSpacing(8)
 
-        # Top Content Row: Orb + (Prompt & Status Pill)
+        # Top Content Row: Orb + (Prompt & Status Pill) + Close Button
         self.content_row = QHBoxLayout()
         self.content_row.setSpacing(14)
         self.content_row.setAlignment(Qt.AlignVCenter)
 
-        # Glowing celestial orb on the left
+        # Glowing celestial orb on the left (Clicking orb acts as action toggle)
         self.orb = VoiceOSOrb(self)
         self.content_row.addWidget(self.orb, alignment=Qt.AlignTop)
 
@@ -78,6 +79,7 @@ class VoiceOSNotch(QWidget):
         self.prompt_label = QLabel("What can I do for you?")
         self.prompt_label.setObjectName("PromptLabel")
         self.prompt_label.setWordWrap(True)
+        self.prompt_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
 
         pill_layout = QHBoxLayout()
         pill_layout.setSpacing(8)
@@ -102,6 +104,33 @@ class VoiceOSNotch(QWidget):
         self.content_row.addLayout(text_layout)
         self.content_row.addStretch()
 
+        # Close / Dismiss button (top right of the notch)
+        self.btn_close = QPushButton("✕", self.container)
+        self.btn_close.setObjectName("NotchCloseBtn")
+        self.btn_close.setToolTip("Dismiss (Esc)")
+        self.btn_close.setCursor(Qt.PointingHandCursor)
+        self.btn_close.setStyleSheet("""
+            QPushButton#NotchCloseBtn {
+                background: rgba(255, 255, 255, 12);
+                color: rgba(255, 255, 255, 140);
+                border: 1px solid rgba(255, 255, 255, 20);
+                font-size: 11px;
+                font-weight: bold;
+                border-radius: 12px;
+                min-width: 24px;
+                max-width: 24px;
+                min-height: 24px;
+                max-height: 24px;
+            }
+            QPushButton#NotchCloseBtn:hover {
+                background: rgba(255, 255, 255, 35);
+                color: #ffffff;
+                border-color: rgba(255, 255, 255, 60);
+            }
+        """)
+        self.btn_close.clicked.connect(self.close_requested.emit)
+        self.content_row.addWidget(self.btn_close, alignment=Qt.AlignTop)
+
         container_layout.addLayout(self.content_row)
 
         # Action Card for confirmation dialogues
@@ -111,18 +140,12 @@ class VoiceOSNotch(QWidget):
         self.action_card.hide()
         container_layout.addWidget(self.action_card)
 
-        # Interactive click routing
-        def _on_interactive_clicked(e):
+        # Only clicking the orb acts as an intentional tap-to-talk / tap-to-stop action
+        def _on_orb_clicked(e):
             if e.button() == Qt.LeftButton:
                 self.clicked.emit()
 
-        self.prompt_label.mousePressEvent = _on_interactive_clicked
-        self.status_pill.mousePressEvent = _on_interactive_clicked
-        self.orb.mousePressEvent = _on_interactive_clicked
-
-        self.prompt_label.setCursor(Qt.PointingHandCursor)
-        self.status_pill.setCursor(Qt.PointingHandCursor)
-        self.orb.setCursor(Qt.PointingHandCursor)
+        self.orb.mousePressEvent = _on_orb_clicked
 
         # Setup animations
         self.anim_geom = QPropertyAnimation(self, b"geometry")
@@ -189,8 +212,12 @@ class VoiceOSNotch(QWidget):
             if self.action_card.isVisible() and self.action_card.geometry().contains(event.pos()):
                 super().mousePressEvent(event)
                 return
-            self.clicked.emit()
         super().mousePressEvent(event)
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Escape:
+            self.close_requested.emit()
+        super().keyPressEvent(event)
 
     def showEvent(self, event):
         super().showEvent(event)
