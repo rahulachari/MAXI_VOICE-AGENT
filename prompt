@@ -1,0 +1,1396 @@
+JARVIS
+Production-Grade Windows AI Voice Assistant
+Complete Pin-to-Pin Build Specification
+You are not being asked to create a simple chatbot.
+You are being asked to engineer a complete Windows desktop AI assistant called JARVIS.
+JARVIS should behave like a practical computer-control assistant inspired by the concept of Tony Stark's
+JARVIS and modern voice operating systems.
+The user should be able to control their Windows computer naturally using their voice.
+The fundamental experience is:
+CTRL + ALT → JARVIS wakes → JARVIS listens → JARVIS understands → JARVIS determines what the user
+means → JARVIS uses the correct computer capability → JARVIS performs the action → JARVIS verifies
+the result → JARVIS speaks back → JARVIS returns to idle
+The user should NOT have to manually open a chatbot window every time.
+JARVIS should run quietly in the Windows background and be available system-wide.
+============================================================ 1. PRODUCT VISION
+============================================================
+The product name is:
+JARVIS
+The product is:
+A system-wide Windows AI assistant that combines:
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+Voice interaction
+Natural-language understanding
+Windows automation
+Browser automation
+Application control
+File management
+Screen understanding
+Cursor awareness
+AI reasoning
+Persistent command history
+Secure confirmations
+Optional integrations
+1
+JARVIS is NOT:
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+A normal chatbot website
+A simple speech-to-text application
+A macro recorder
+A collection of unrelated scripts
+A UI prototype
+A fake demonstration
+A program that blindly clicks coordinates
+It must be a real working desktop application.
+============================================================ 2. PRIMARY USER EXPERIENCE
+============================================================
+The user starts Windows.
+JARVIS optionally starts automatically.
+JARVIS runs in the system tray.
+No large window appears.
+The user is working normally.
+For example:
+Chrome is open.
+The user presses:
+CTRL + ALT
+JARVIS immediately appears as a small floating interface near the top center of the currently active
+monitor.
+JARVIS begins listening.
+The user says:
+"Open YouTube."
+JARVIS understands the request.
+JARVIS controls Chrome.
+JARVIS opens YouTube.
+JARVIS verifies that YouTube loaded successfully.
+2
+JARVIS says:
+"YouTube is open."
+The overlay disappears or returns to idle.
+The user continues working.
+This interaction should be possible from almost anywhere in Windows without manually switching to
+the JARVIS application.
+============================================================ 3. GLOBAL ACTIVATION
+HOTKEY ============================================================
+Primary activation:
+CTRL + ALT
+This is a system-wide global hotkey.
+It must work when:
+• 
+• 
+• 
+• 
+• 
+Chrome is active
+VS Code is active
+File Explorer is active
+Notepad is active
+Another normal Windows application is active
+JARVIS must not need keyboard focus.
+Requirements:
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+Detect global key combination.
+Avoid duplicate activation.
+Correctly handle key-down/key-up.
+Avoid triggering repeatedly from a held key.
+Allow shortcut customization.
+Detect conflicts when possible.
+Register/unregister cleanly.
+Re-register after application restart.
+Default:
+CTRL + ALT
+Do not require the user to say "Hey JARVIS" after pressing the hotkey.
+The hotkey itself starts the voice session.
+3
+============================================================ 4. OPTIONAL WAKE WORD
+============================================================
+A future optional feature may support:
+"Hey JARVIS"
+However, wake-word detection is NOT required for version 1.
+The primary activation method must remain:
+CTRL + ALT
+This is intentional because deterministic activation reduces accidental listening.
+============================================================ 5. JARVIS FLOATING OVERLAY
+============================================================
+When activated, display a small floating overlay.
+Position:
+Top-center of the monitor containing the currently active foreground window.
+The overlay must remain above the active application.
+It must not unnecessarily steal keyboard focus.
+The overlay should be transparent/translucent.
+Visual style:
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+Premium
+Futuristic
+Minimal
+Dark
+Glass-like
+Subtle blue/cyan glow
+Smooth animation
+Clean typography
+JARVIS-inspired
+Do NOT create an oversized gaming-style interface.
+============================================================ 6. OVERLAY STATES
+============================================================
+The overlay must have explicit states.
+IDLE
+4
+JARVIS is waiting.
+LISTENING
+JARVIS is recording the current voice command.
+PROCESSING
+Speech is being interpreted.
+EXECUTING
+A computer action is being performed.
+SPEAKING
+JARVIS is responding.
+CONFIRMATION_REQUIRED
+JARVIS needs permission before executing a consequential action.
+ERROR
+An operation failed.
+Each state must have a different visual indicator.
+Example:
+LISTENING:
+JARVIS Listening...
+PROCESSING:
+JARVIS Thinking...
+EXECUTING:
+JARVIS Opening YouTube...
+ERROR:
+JARVIS I couldn't open YouTube.
+============================================================ 7. SYSTEM TRAY
+============================================================
+5
+JARVIS must have a Windows system tray icon.
+Tray menu:
+JARVIS
+Activate Enable Assistant Disable Assistant History Settings Microphone Voice Privacy Integrations Logs
+Restart Exit
+The application must continue operating in the background when the main UI is not visible.
+============================================================ 8. VOICE SESSION LIFECYCLE
+============================================================
+The complete voice lifecycle is:
+IDLE ↓ CTRL + ALT ↓ LISTENING ↓ VOICE ACTIVITY DETECTION ↓ SPEECH-TO-TEXT ↓ CONTEXT
+COLLECTION ↓ INTENT UNDERSTANDING ↓ COMMAND PLANNING ↓ TOOL SELECTION ↓ ACTION
+EXECUTION ↓ ACTION VERIFICATION ↓ TEXT-TO-SPEECH ↓ IDLE
+Each state must be explicitly represented in the application.
+Do not create one giant function that handles the entire lifecycle.
+============================================================ 9. MICROPHONE
+============================================================
+Microphone processing must be event-driven.
+Default behavior:
+Microphone is NOT continuously recording.
+When CTRL + ALT is pressed:
+• 
+• 
+• 
+• 
+• 
+Start microphone session.
+Detect speech.
+Transcribe speech.
+Detect end of command.
+Stop microphone capture.
+Implement:
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+Microphone device selection
+Voice activity detection
+Silence detection
+Noise handling
+Timeout
+Empty-input handling
+Permission errors
+6
+Device errors
+• 
+If no microphone is available:
+JARVIS should say:
+"I couldn't access your microphone."
+Do not crash.
+============================================================ 10. SPEECH-TO-TEXT
+============================================================
+Create a provider abstraction.
+Example:
+SpeechToTextProvider
+The implementation must be replaceable.
+Possible providers may include a cloud or local speech-recognition engine.
+Do not hard-code the entire application to one provider.
+The system should handle minor transcription errors.
+Example:
+User says:
+"Open YouTube in Chrome."
+Transcription:
+"open youtube in chrome"
+The intent system should understand it.
+However, do NOT automatically "correct" important entities such as:
+• 
+• 
+• 
+• 
+• 
+• 
+Email addresses
+File names
+URLs
+Names
+Passwords
+Commands
+without sufficient confidence.
+7
+============================================================ 11. TEXT-TO-SPEECH
+============================================================
+Create:
+TextToSpeechProvider
+Requirements:
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+Natural voice
+Configurable voice
+Configurable speed
+Configurable volume
+Async playback
+Cancellation
+Barge-in support
+JARVIS responses should normally be short.
+Example:
+"Opening YouTube."
+"I found two matching files."
+"I need your confirmation before sending that."
+============================================================ 12. BARGE-IN
+============================================================
+The user must be able to interrupt JARVIS.
+Example:
+JARVIS:
+"Opening YouTube now..."
+User:
+"Stop."
+JARVIS must immediately stop speech.
+Cancellation commands include:
+Stop Cancel Abort Never mind
+Where possible, also cancel the active operation.
+8
+============================================================ 13. NATURAL LANGUAGE
+============================================================
+The user should not need to learn commands.
+These should all map to the same intent:
+"Open YouTube."
+"Launch YouTube."
+"Can you open YouTube?"
+"Take me to YouTube."
+"Go to YouTube."
+"Please open YouTube for me."
+The intent engine must identify the underlying goal rather than matching exact phrases.
+============================================================ 14. INTENT CATEGORIES
+============================================================
+Implement intent categories such as:
+APP_LAUNCH APP_CLOSE APP_FOCUS WINDOW_CONTROL
+WEB_NAVIGATION WEB_SEARCH BROWSER_ACTION
+TEXT_INPUT TEXT_SELECTION
+FILE_SEARCH FILE_OPEN FILE_CREATE FILE_RENAME FILE_MOVE FILE_DELETE
+SCREEN_ANALYSIS CURSOR_ANALYSIS
+EMAIL CALENDAR MESSAGING
+MEDIA_CONTROL
+SYSTEM_CONTROL
+CODE_ASSISTANCE AI_QUERY
+HISTORY
+CANCEL
+UNKNOWN
+9
+============================================================ 15. COMMAND ROUTER
+============================================================
+The router receives:
+Transcript
++ Current context
+and determines:
+Intent
++ Target
++ Parameters
++ Required tool
++ Whether confirmation is required
+Example:
+Input:
+"Open YouTube."
+Result:
+Intent: WEB_NAVIGATION
+Target: YouTube
+Tool: BrowserTool
+Confirmation: NO
+============================================================ 16. CONTEXT ENGINE
+============================================================
+JARVIS should understand the user's current environment.
+When necessary, collect:
+• 
+• 
+• 
+• 
+• 
+Active window
+Process name
+Application name
+Window title
+Active monitor
+10
+• 
+• 
+• 
+• 
+Cursor position
+Selected text
+Browser state
+Screen image
+Context collection must be minimal.
+Do not collect everything for every command.
+Example:
+User:
+"Scroll down."
+If Chrome is active:
+Target: Chrome
+Tool: BrowserTool
+If VS Code is active:
+Target: VS Code
+The meaning depends on context.
+============================================================ 17. CONVERSATIONAL
+CONTEXT ============================================================
+JARVIS should maintain short-lived active context.
+Example:
+User:
+"Open YouTube."
+JARVIS:
+"YouTube is open."
+User:
+"Search for Python tutorials."
+JARVIS should understand that the request applies to the active YouTube page.
+User:
+11
+"Open the third result."
+JARVIS should understand "third result" using the current page.
+User:
+"Scroll down."
+JARVIS should continue using the current context.
+Context should expire when appropriate.
+Do not maintain unlimited hidden context.
+============================================================ 18. CHROME AUTOMATION
+============================================================
+Chrome is a major supported application.
+Support:
+Open Chrome Close Chrome Focus Chrome Open URL Search Google Search YouTube Open new tab
+Close tab Switch tab Back Forward Refresh Scroll Find text Click buttons Type into fields Play/pause
+media where technically reliable
+Use reliable browser automation.
+Preferred order:
+Browser APIs / DOM ↓ Accessibility ↓ Keyboard shortcuts ↓ Mouse coordinates
+Do not rely primarily on hard-coded coordinates.
+============================================================ 19. YOUTUBE
+============================================================
+The following must work:
+"Open YouTube."
+"Open YouTube in Chrome."
+"Search YouTube for Python tutorials."
+"Open the third result."
+"Scroll down."
+"Open the comments."
+12
+"Play this video."
+"Pause the video."
+"Go back."
+Use semantic browser interaction where possible.
+Example:
+User:
+CTRL + ALT
+"Open YouTube."
+JARVIS:
+Chrome launches/focuses.
+YouTube opens.
+Page load is verified.
+JARVIS:
+"YouTube is open."
+============================================================ 20. WINDOWS APPLICATION
+CONTROL ============================================================
+Support common Windows applications.
+Examples:
+"Open Notepad."
+"Open Calculator."
+"Open Settings."
+"Open Task Manager."
+"Launch VS Code."
+"Close Chrome."
+"Switch to VS Code."
+13
+"Minimize this window."
+"Maximize this window."
+"Lock my PC."
+Use Windows APIs where possible.
+============================================================ 21. FILE SYSTEM
+============================================================
+Support:
+Find files Open files Create folders Create files Rename files Move files Search files Open recent files
+Examples:
+"Find my resume."
+"Open my resume."
+"Create a folder called Projects."
+"Move this file to Downloads."
+"Find PDFs modified today."
+If multiple files match:
+Do not guess.
+Ask:
+"I found multiple matching files. Which one do you mean?"
+============================================================ 22. FILE SAFETY
+============================================================
+Destructive operations require confirmation.
+Examples:
+Delete Permanent delete Overwrite Bulk rename Bulk move
+Never permanently delete something simply because the user spoke a vague command.
+============================================================ 23. KEYBOARD AUTOMATION
+============================================================
+14
+Create:
+KeyboardTool
+Functions:
+press() hotkey() type() key_down() key_up()
+Use semantic shortcuts when reliable.
+============================================================ 24. MOUSE AUTOMATION
+============================================================
+Create:
+MouseTool
+Functions:
+move() click() double_click() right_click() scroll() drag()
+Coordinate automation is a fallback.
+It must NOT be the primary automation mechanism when a semantic API exists.
+============================================================ 25. SCREEN UNDERSTANDING
+============================================================
+JARVIS must optionally understand what is displayed on the screen.
+Commands:
+"What is on my screen?"
+"Read this error."
+"Explain this page."
+"What does this button do?"
+"Find the download button."
+"Summarize this webpage."
+Process:
+1. 
+2. 
+3. 
+Capture screen only when required.
+Determine relevant region.
+Send image to vision provider.
+15
+4. 
+5. 
+Analyze.
+Respond.
+Do NOT continuously capture screenshots.
+============================================================ 26. CURSOR
+UNDERSTANDING ============================================================
+The assistant must be aware of cursor position when requested.
+Example:
+User moves cursor over a button.
+User:
+"What does this do?"
+JARVIS:
+1. 
+2. 
+3. 
+4. 
+Reads cursor coordinates.
+Captures relevant screen area.
+Sends region for analysis.
+Explains the UI element.
+============================================================ 27. AI MODE
+============================================================
+JARVIS can answer questions that do not require computer control.
+Examples:
+"What is AGI?"
+"Explain recursion."
+"Write Python code."
+"Explain this error."
+"Summarize this."
+Do not perform computer actions for a purely informational question.
+============================================================ 28. COMMAND PLANNING
+============================================================
+Simple commands:
+Execute directly.
+16
+Complex commands:
+Create an explicit plan.
+Example:
+"Open Chrome, go to YouTube, and search for Python tutorials."
+Plan:
+1. 
+2. 
+3. 
+4. 
+5. 
+6. 
+7. 
+Launch/focus Chrome.
+Navigate to YouTube.
+Locate search field.
+Enter query.
+Submit.
+Verify results.
+Respond.
+Each step must be validated.
+If a critical step fails:
+STOP.
+Do not continue blindly.
+============================================================ 29. ACTION VERIFICATION
+============================================================
+JARVIS must verify actions whenever possible.
+Example:
+Command:
+"Open YouTube."
+Do not assume success merely because a browser command was sent.
+Verify:
+• 
+• 
+• 
+Chrome exists.
+Correct tab/page exists.
+Page loaded.
+Only then say:
+"YouTube is open."
+If verification fails:
+17
+"I couldn't confirm that YouTube opened."
+============================================================ 30. CLARIFICATION
+============================================================
+Never invent missing critical information.
+Examples:
+"Send an email."
+Response:
+"Who should I send it to?"
+"Delete the file."
+Response:
+"Which file?"
+"Open that."
+If multiple possible targets exist:
+"Which one do you mean?"
+============================================================ 31. CONFIRMATION
+============================================================
+Require explicit confirmation for consequential operations.
+Examples:
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+Send email
+Send message
+Delete files
+Delete folders
+Purchase something
+Submit forms
+Post publicly
+Execute dangerous commands
+Change critical system settings
+Safe operations should not require confirmation.
+============================================================ 32. SHELL SECURITY
+============================================================
+Never execute arbitrary voice-generated PowerShell/CMD commands automatically.
+18
+If the user asks JARVIS to execute a command:
+1. 
+2. 
+3. 
+4. 
+5. 
+6. 
+Parse it.
+Assess risk.
+Show the command in the UI.
+Explain the action briefly.
+Ask for confirmation if risky.
+Execute only after confirmation.
+Use command allowlists where practical.
+============================================================ 33. SECURITY
+============================================================
+Never hard-code API keys.
+Never expose secrets in logs.
+Never store passwords in history.
+Never silently transmit private screen data.
+Never perform dangerous actions based on ambiguous instructions.
+Provide a security layer before tool execution.
+============================================================ 34. PRIVACY
+============================================================
+Default privacy model:
+Microphone: OFF when idle.
+Screen capture: OFF unless needed.
+Raw audio storage: OFF.
+Screenshot storage: OFF.
+Cloud transmission: Only when required by an enabled feature/provider.
+Provide privacy settings.
+============================================================ 35. PERSISTENT HISTORY
+============================================================
+JARVIS must save command history locally.
+19
+History should include:
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+User command
+Transcription
+JARVIS response
+Tool/action
+Status
+Timestamp
+Session ID
+Example:
+TODAY
+9:42 PM Open YouTube.
+JARVIS: YouTube is open.
+Action: Browser → YouTube
+Status: SUCCESS
+============================================================ 36. HISTORY DATABASE
+============================================================
+Use SQLite.
+Suggested tables:
+sessions
+id title created_at updated_at
+messages
+id session_id role content timestamp
+actions
+id message_id tool action status timestamp
+Database logic must be isolated from UI logic.
+============================================================ 37. HIDDEN HISTORY
+SIDEBAR ============================================================
+History must be hidden during normal operation.
+Position:
+20
+LEFT EDGE OF SCREEN.
+Only a very small trigger should remain visible.
+When activated:
+The sidebar smoothly slides out from the left.
+Example:
+Normal:
+JARVIS
+History open:
+| HISTORY | JARVIS |----------------------| | Search history... | | | TODAY | | Open YouTube | | Search
+Python | | Open VS Code | | | YESTERDAY | | Find resume | | Check Gmail |
+The sidebar must overlay the current application.
+It must NOT resize the current application.
+============================================================ 38. HISTORY HOTKEY
+============================================================
+Default:
+CTRL + ALT + H
+If sidebar is hidden:
+Slide in.
+If sidebar is visible:
+Slide out.
+This shortcut must be independent from:
+CTRL + ALT
+voice activation.
+============================================================ 39. HISTORY EDGE BEHAVIOR
+============================================================
+21
+Optional:
+Left-edge mouse hover can open the sidebar.
+However:
+The primary guaranteed activation method is:
+CTRL + ALT + H
+Edge-hover should be configurable.
+The sidebar should not constantly pop open accidentally.
+============================================================ 40. HISTORY ORGANIZATION
+============================================================
+Group history:
+TODAY YESTERDAY THIS WEEK OLDER
+Each item should show:
+• 
+• 
+• 
+Short command
+Time
+Status
+============================================================ 41. HISTORY SEARCH
+============================================================
+Provide search.
+Search should operate over:
+• 
+• 
+• 
+User commands
+JARVIS responses
+Action descriptions
+Example:
+Search:
+youtube
+Results:
+Open YouTube Search YouTube for Python Open YouTube comments
+Use indexed database search.
+22
+Do not load thousands of records unnecessarily.
+============================================================ 42. HISTORY ACTIONS
+============================================================
+Selecting a history item should provide:
+View Run Again Copy Delete
+"Run Again" must use the normal command router.
+It must NOT bypass security or confirmation.
+============================================================ 43. HISTORY SESSIONS
+============================================================
+Group related commands.
+Example:
+YouTube Research
+09:42 Open YouTube.
+09:43 Search Python tutorials.
+09:44 Open the third result.
+09:45 Summarize this video.
+Allow the user to reopen the session.
+============================================================ 44. HISTORY PRIVACY
+SETTINGS ============================================================
+Settings:
+Save History ON/OFF
+Save Transcripts ON/OFF
+Save Action Logs ON/OFF
+Save Screen Captures ON/OFF
+Provide:
+Clear Today's History Clear All History Export History Disable History
+23
+Disabling history must not disable JARVIS itself.
+============================================================ 45. MULTI-MONITOR
+SUPPORT ============================================================
+JARVIS must support multiple monitors.
+If the active application is on Monitor 2:
+JARVIS overlay appears on Monitor 2.
+History sidebar appears on the left edge of Monitor 2.
+Do not force UI to the primary monitor.
+Determine the monitor containing the foreground window.
+============================================================ 46. APPLICATION ADAPTER
+ARCHITECTURE ============================================================
+Create adapters.
+Examples:
+ChromeAdapter YouTubeAdapter VSCodeAdapter FileExplorerAdapter GmailAdapter OutlookAdapter
+CalendarAdapter
+Each adapter should contain application-specific behavior.
+Do not put all application logic inside the central router.
+============================================================ 47. TOOL ARCHITECTURE
+============================================================
+Create independent tools.
+Example:
+BrowserTool WindowsTool FilesystemTool KeyboardTool MouseTool ScreenTool VisionTool EmailTool
+CalendarTool MediaTool HistoryTool AIQueryTool
+Each tool should have a clear interface.
+============================================================ 48. PROVIDER ARCHITECTURE
+============================================================
+External services must be replaceable.
+Create interfaces such as:
+24
+AIProvider SpeechToTextProvider TextToSpeechProvider VisionProvider
+This allows changing providers without rewriting JARVIS.
+============================================================ 49. ERROR STATES
+============================================================
+Every tool must return a structured result.
+Statuses:
+SUCCESS FAILED REQUIRES_CONFIRMATION REQUIRES_CLARIFICATION NOT_SUPPORTED CANCELLED
+Never pretend an operation succeeded.
+============================================================ 50. OFFLINE / INTERNET
+FAILURE ============================================================
+If an external provider is unavailable:
+Do not crash.
+Use local functionality where possible.
+Otherwise provide a concise spoken error.
+Example:
+"I can't access the AI service right now."
+============================================================ 51. PERFORMANCE
+============================================================
+JARVIS must feel fast.
+Target:
+CTRL + ALT → overlay appears immediately.
+Avoid:
+• 
+• 
+• 
+• 
+• 
+• 
+Blocking UI
+Long synchronous operations
+Reinitializing everything for every command
+Loading the entire history database
+Unnecessary screen captures
+Unnecessary AI calls
+Use asynchronous execution and background workers.
+25
+============================================================ 52. RECOMMENDED
+TECHNOLOGY ============================================================
+Prefer a Windows-first implementation.
+Recommended stack:
+Python
+PySide6
+Windows APIs / PyWin32
+Playwright
+SQLite
+Pillow/OpenCV where required
+Windows UI Automation where appropriate
+A reliable speech-to-text provider
+A reliable text-to-speech provider
+A modern LLM provider
+A vision-capable provider
+Use maintained packages.
+Verify Windows compatibility before adding dependencies.
+============================================================ 53. PROJECT STRUCTURE
+============================================================
+Use a clean modular structure:
+jarvis/
+app/ main.py lifecycle.py config.py
+ui/ overlay.py orb.py tray.py history_sidebar.py history_item.py history_search.py settings.py
+voice/ microphone.py speech_to_text.py text_to_speech.py voice_activity.py session.py
+intelligence/ intent.py router.py planner.py context.py confirmation.py provider.py
+tools/ browser/ windows/ filesystem/ keyboard/ mouse/ screen/ vision/ email/ calendar/ media/ history/
+26
+adapters/ chrome.py youtube.py vscode.py file_explorer.py gmail.py outlook.py calendar.py
+storage/ database.py history_repository.py session_repository.py
+security/ permissions.py command_guard.py secrets.py
+tests/
+installer/
+requirements.txt .env.example README.md CHANGELOG.md LICENSE
+run.py
+Do not create unnecessary placeholder modules.
+============================================================ 54. SETTINGS
+============================================================
+Create a proper settings interface.
+Sections:
+General Voice Microphone AI Browser History Privacy Security Shortcuts Integrations Startup Advanced
+Allow:
+Activation shortcut History shortcut Microphone selection Voice selection TTS speed TTS volume AI
+provider API credentials History settings Startup behavior Privacy settings
+============================================================ 55. FIRST-RUN SETUP
+============================================================
+After installation, launch JARVIS.
+Show a first-run wizard.
+Step 1:
+Welcome to JARVIS.
+Step 2:
+Select microphone.
+Step 3:
+Select speaker/output.
+27
+Step 4:
+Configure AI provider.
+Step 5:
+Configure speech recognition.
+Step 6:
+Choose JARVIS voice.
+Step 7:
+Activation shortcut.
+Default:
+CTRL + ALT
+Step 8:
+History shortcut.
+Default:
+CTRL + ALT + H
+Step 9:
+Privacy settings.
+Step 10:
+Start with Windows.
+Step 11:
+Finish.
+After completion:
+JARVIS minimizes to the system tray.
+============================================================ 56. PRODUCTION WINDOWS
+INSTALLER ============================================================
+The final project MUST produce a real Windows installer.
+28
+Required output:
+JARVIS-Setup.exe
+The end user must NOT need:
+Python pip Git VS Code Node.js PowerShell setup commands Manual package installation Source code
+The installer must bundle everything required for normal operation.
+============================================================ 57. INSTALLER
+REQUIREMENTS ============================================================
+The installer must:
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+Install JARVIS.
+Bundle required runtime.
+Bundle dependencies.
+Bundle assets.
+Configure directories.
+Create Start Menu shortcut.
+Optionally create Desktop shortcut.
+Offer Windows startup.
+Create uninstaller.
+Support upgrades.
+Preserve user data during upgrades.
+A portable ZIP may optionally be provided.
+However:
+The installer is mandatory.
+============================================================ 58. INSTALLATION DIRECTORY
+============================================================
+Separate application files and user data.
+Application:
+Program Files/JARVIS/
+User data:
+AppData/Local/JARVIS/
+User data may contain:
+Database History Settings Logs Cache
+29
+Do not store user history inside Program Files.
+============================================================ 59. CREDENTIAL STORAGE
+============================================================
+Never hard-code credentials.
+Use secure Windows storage where possible.
+API credentials should be entered during first-run setup or Settings.
+Use Windows Credential Manager or equivalent secure storage.
+Never put secrets into:
+Source code Git Logs History Screenshots
+============================================================ 60. WINDOWS STARTUP
+============================================================
+Provide:
+Start JARVIS with Windows
+When enabled:
+Windows starts ↓ JARVIS starts ↓ Tray icon appears ↓ Global hotkey registers ↓ JARVIS waits in
+background
+Do not open a large window automatically.
+============================================================ 61. UNINSTALLATION
+============================================================
+Provide a proper uninstaller.
+Allow:
+Remove application
+or:
+Remove application + JARVIS user data
+Do not silently delete saved history.
+============================================================ 62. CLEAN MACHINE
+INSTALLATION TEST ============================================================
+30
+Test the installer on a clean Windows environment.
+The test environment should NOT have:
+Python Git VS Code Development dependencies
+Test:
+1. 
+2. 
+3. 
+4. 
+5. 
+6. 
+7. 
+8. 
+9. 
+10. 
+11. 
+12. 
+13. 
+14. 
+15. 
+16. 
+17. 
+Run JARVIS-Setup.exe.
+Install.
+Complete setup.
+Launch JARVIS.
+Verify tray.
+Verify microphone.
+Press CTRL + ALT.
+Speak a command.
+Verify action.
+Restart Windows.
+Verify startup.
+Verify history.
+Press CTRL + ALT + H.
+Verify sidebar.
+Uninstall.
+Verify application removal.
+Verify user-data behavior.
+============================================================ 63. LOGGING
+============================================================
+Create structured logs.
+Example:
+[21:45:02] HOTKEY_TRIGGERED
+[21:45:02] LISTENING_STARTED
+[21:45:04] TRANSCRIPT_RECEIVED
+[21:45:04] INTENT=WEB_NAVIGATION
+[21:45:04] TOOL=BrowserTool
+[21:45:05] ACTION_SUCCESS
+[21:45:05] TTS_STARTED
+[21:45:06] IDLE
+Do not log sensitive information unnecessarily.
+31
+============================================================ 64. TESTING STRATEGY
+============================================================
+Create automated tests for:
+Global hotkey Voice lifecycle Intent engine Router Planner Browser automation Windows automation
+File operations History Database Confirmation Security Error handling Multi-monitor UI Settings Startup
+Shutdown
+Also perform real end-to-end testing.
+============================================================ 65. MILESTONE
+DEVELOPMENT ============================================================
+DO NOT build everything in one uncontrolled pass.
+Build incrementally.
+MILESTONE 1:
+Core application.
+Implement:
+• 
+• 
+• 
+• 
+• 
+• 
+Test:
+Tray
+Ctrl + Alt
+Overlay
+Microphone
+STT
+TTS
+"Hello JARVIS."
+MILESTONE 2:
+Windows application control.
+Test:
+"Open Notepad."
+"Close Notepad."
+MILESTONE 3:
+Chrome.
+32
+Test:
+"Open Chrome."
+"Open YouTube."
+MILESTONE 4:
+Browser automation.
+Test:
+"Search YouTube for Python tutorials."
+MILESTONE 5:
+Context.
+Implement active application and conversational context.
+MILESTONE 6:
+Screen and cursor vision.
+MILESTONE 7:
+File system.
+MILESTONE 8:
+History and hidden sidebar.
+MILESTONE 9:
+Security and confirmations.
+MILESTONE 10:
+Integrations.
+MILESTONE 11:
+Installer.
+MILESTONE 12:
+Final testing and release.
+After every milestone:
+33
+RUN TESTS.
+FIX ERRORS.
+VERIFY REAL BEHAVIOR.
+Do not proceed with known critical failures.
+============================================================ 66. REAL-WORLD
+ACCEPTANCE TEST ============================================================
+Test the following exact workflow.
+TEST A
+Start JARVIS.
+Expected:
+Tray icon appears.
+No large window.
+TEST B
+Open Chrome manually.
+Press:
+CTRL + ALT
+Say:
+"Open YouTube."
+Expected:
+YouTube opens in Chrome.
+JARVIS verifies the page.
+JARVIS says:
+"YouTube is open."
+TEST C
+Press:
+34
+CTRL + ALT
+Say:
+"Search for Python AI tutorials."
+Expected:
+Search is performed.
+TEST D
+Press:
+CTRL + ALT
+Say:
+"Scroll down."
+Expected:
+Current page scrolls.
+TEST E
+Press:
+CTRL + ALT
+Say:
+"What is this?"
+Expected:
+JARVIS uses screen/cursor context when necessary.
+TEST F
+Press:
+CTRL + ALT + H
+Expected:
+History sidebar slides in from the left.
+TEST G
+35
+Search history for:
+YouTube
+Expected:
+Previous YouTube commands appear.
+TEST H
+Select:
+Open YouTube.
+Expected:
+Command details appear.
+TEST I
+Click:
+RUN AGAIN
+Expected:
+Command is routed normally and executes safely.
+TEST J
+Restart Windows.
+Expected:
+JARVIS automatically starts if startup is enabled.
+History remains available.
+============================================================ 67. FINAL BEHAVIOR RULES
+============================================================
+RULE 1
+Never claim success unless the action was verified.
+RULE 2
+Never guess critical information.
+36
+RULE 3
+Ask clarification when required.
+RULE 4
+Require confirmation for consequential actions.
+RULE 5
+Do not continuously record audio.
+RULE 6
+Do not continuously capture the screen.
+RULE 7
+Never expose API keys.
+RULE 8
+Never execute arbitrary dangerous shell commands without protection.
+RULE 9
+Prefer semantic automation over coordinates.
+RULE 10
+Keep normal voice responses concise.
+RULE 11
+Stop failed execution chains instead of blindly continuing.
+RULE 12
+Preserve user history and settings during upgrades.
+RULE 13
+Do not make the user install developer tools.
+RULE 14
+Do not create fake functionality.
+RULE 15
+37
+If a feature cannot be implemented reliably, implement a safe fallback and clearly document the
+limitation.
+============================================================ 68. DEFINITION OF DONE
+============================================================
+The project is NOT complete until:
+CORE
+[ ] Windows application launches [ ] System tray works [ ] Ctrl + Alt works globally [ ] Overlay works [ ]
+Microphone works [ ] Speech recognition works [ ] TTS works [ ] Barge-in works
+INTELLIGENCE
+[ ] Natural-language commands work [ ] Intent routing works [ ] Context awareness works [ ] Multi-step
+planning works [ ] Action verification works [ ] Clarification works [ ] Confirmation works
+WINDOWS
+[ ] Applications can be launched [ ] Applications can be focused [ ] Windows can be controlled [ ]
+Keyboard automation works [ ] Mouse automation works [ ] File operations work
+BROWSER
+[ ] Chrome launches [ ] Chrome can be focused [ ] URLs can be opened [ ] Google search works [ ]
+YouTube works [ ] YouTube search works [ ] Tabs work [ ] Navigation works [ ] Scrolling works
+VISION
+[ ] Screen capture works [ ] Cursor context works [ ] Vision analysis works
+HISTORY
+[ ] History is persistent [ ] SQLite works [ ] Sessions work [ ] Search works [ ] Hidden left sidebar works [ ]
+Ctrl + Alt + H works [ ] Run Again works [ ] Copy works [ ] Delete works [ ] Clear history works [ ] History
+privacy controls work
+SECURITY
+[ ] Dangerous commands are protected [ ] Confirmation works [ ] Secrets are protected [ ] Sensitive data
+is not unnecessarily logged
+UI
+[ ] JARVIS overlay is polished [ ] Sidebar is polished [ ] Multi-monitor support works [ ] Settings work [ ]
+System tray works
+DEPLOYMENT
+38
+[ ] JARVIS-Setup.exe exists [ ] Installer works [ ] No Python required [ ] No Git required [ ] No VS Code
+required [ ] Dependencies are bundled [ ] Startup works [ ] Uninstaller works [ ] Upgrade behavior works
+[ ] Clean-machine installation succeeds
+============================================================ 69. FINAL PRODUCT
+EXPERIENCE ============================================================
+The finished application should behave like this:
+WINDOWS STARTS
+↓
+JARVIS starts silently
+↓
+JARVIS appears in the system tray
+↓
+USER IS WORKING IN CHROME
+↓
+USER PRESSES CTRL + ALT
+↓
+JARVIS FLOATING ORB APPEARS AT TOP CENTER
+↓
+JARVIS LISTENS
+↓
+USER:
+"Open YouTube."
+↓
+JARVIS UNDERSTANDS
+↓
+JARVIS CONTROLS CHROME
+39
+↓
+YOUTUBE OPENS
+↓
+JARVIS VERIFIES SUCCESS
+↓
+JARVIS:
+"YouTube is open."
+↓
+JARVIS RETURNS TO IDLE
+USER:
+CTRL + ALT
+"Search for Python AI tutorials."
+↓
+JARVIS USES CURRENT CHROME/YOUTUBE CONTEXT
+↓
+SEARCH EXECUTES
+↓
+JARVIS:
+"I've searched for Python AI tutorials."
+USER:
+CTRL + ALT
+"Read this error."
+↓
+40
+JARVIS CAPTURES RELEVANT SCREEN AREA
+↓
+VISION ANALYSIS
+↓
+JARVIS EXPLAINS THE ERROR
+USER:
+CTRL + ALT + H
+↓
+HIDDEN LEFT SIDEBAR SLIDES OUT
+↓
+USER SEES PREVIOUS COMMANDS
+↓
+SEARCHES HISTORY
+↓
+OPENS A PREVIOUS SESSION
+↓
+CAN VIEW / COPY / RUN AGAIN / DELETE
+USER:
+CTRL + ALT
+"Send this email to Rahul."
+↓
+JARVIS PREPARES EMAIL
+↓
+41
+JARVIS DOES NOT SEND IMMEDIATELY
+↓
+JARVIS:
+"I've prepared the email. Do you want me to send it?"
+↓
+USER:
+"Yes."
+↓
+JARVIS SENDS
+↓
+VERIFIES SUCCESS
+↓
+JARVIS:
+"Email sent."
+============================================================ 70. FINAL DEVELOPMENT
+INSTRUCTION ============================================================
+Treat this document as the product specification.
+Do not reduce the scope into a toy application.
+Do not implement only the UI.
+Do not implement only voice recognition.
+Do not implement fake browser actions.
+Do not claim unsupported features are complete.
+Build the actual system.
+Work incrementally.
+Inspect the environment first.
+42
+Determine the correct Windows-compatible dependencies.
+Create the project structure.
+Implement Milestone 1.
+Run it.
+Test it.
+Fix errors.
+Continue to the next milestone.
+Repeat.
+At the end, produce:
+1. 
+2. 
+3. 
+4. 
+5. 
+6. 
+7. 
+8. 
+9. 
+10. 
+Complete source code.
+Automated tests.
+README.
+Configuration documentation.
+.env.example where applicable.
+Security documentation.
+User guide.
+JARVIS-Setup.exe.
+Optional portable build.
+Release notes.
+The final question the development team must be able to answer YES to is:
+"Can a normal Windows user install JARVIS on a clean PC, press CTRL + ALT from another application,
+speak naturally, and have JARVIS safely understand and perform the requested computer action?"
+If the answer is not YES, the project is not finished.
+43

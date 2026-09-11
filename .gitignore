@@ -1,0 +1,18 @@
+# Environment Secrets
+.env
+.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# User Data & Logs
+*.db
+*.log
+scratch/

@@ -1,0 +1,613 @@
+"""
+JARVIS Local Semantic Engine
+100% offline rule-based semantic parser for core Windows, desktop, browser,
+messaging (WhatsApp, email), media, and productivity commands.
+"""
+
+import re
+from datetime import datetime
+from typing import Optional
+from .intent import Intent, IntentCategory
+from .context import context_engine
+
+POPULAR_SITES = {
+    "google": "https://www.google.com",
+    "youtube": "https://www.youtube.com",
+    "reddit": "https://www.reddit.com",
+    "github": "https://www.github.com",
+    "twitter": "https://x.com",
+    "x": "https://x.com",
+    "chatgpt": "https://chatgpt.com",
+    "chat gpt": "https://chatgpt.com",
+    "gmail": "https://mail.google.com",
+    "linkedin": "https://www.linkedin.com",
+    "spotify": "https://open.spotify.com",
+    "instagram": "https://www.instagram.com",
+    "facebook": "https://www.facebook.com",
+    "amazon": "https://www.amazon.in",
+    "flipkart": "https://www.flipkart.com",
+    "netflix": "https://www.netflix.com",
+    "whatsapp web": "https://web.whatsapp.com",
+    "telegram": "https://web.telegram.org",
+    "discord": "https://discord.com/app",
+    "slack": "https://app.slack.com",
+    "notion": "https://www.notion.so",
+    "figma": "https://www.figma.com",
+    "canva": "https://www.canva.com",
+    "wikipedia": "https://en.wikipedia.org",
+    "stack overflow": "https://stackoverflow.com",
+    "stackoverflow": "https://stackoverflow.com",
+}
+
+
+class LocalSemanticEngine:
+    @staticmethod
+    def parse(transcript: str) -> Optional[Intent]:
+        text = transcript.lower().strip()
+        # Remove common politeness prefixes and wake words
+        text = re.sub(r"^(jarvis|please|can you|could you|would you|hey jarvis|hi jarvis|ok jarvis)\s+", "", text).strip()
+        text = text.rstrip(".?!")
+
+        # 1. Cancellation / Stop
+        if text in ["stop", "cancel", "abort", "never mind", "quit", "pause", "shut up", "be quiet", "enough"]:
+            return Intent(category=IntentCategory.CANCEL, action="cancel")
+
+        # 2. Greetings and Identity
+        if text in ["hello", "hi", "hey", "good morning", "good evening", "good afternoon", "how are you", "what's up", "hey there"]:
+            return Intent(
+                category=IntentCategory.AI_QUERY,
+                action="query",
+                params={"query": transcript},
+                confirmation_prompt="Hello! I am JARVIS, ready to assist you.",
+            )
+
+        if text in ["who are you", "what is your name", "introduce yourself", "what are you", "what can you do"]:
+            return Intent(
+                category=IntentCategory.AI_QUERY,
+                action="query",
+                params={"query": transcript},
+                confirmation_prompt="I am JARVIS, your desktop voice operating system assistant. I can open apps, search the web, send messages, write emails, control your system, and much more.",
+            )
+
+        # 3. System Time & Date
+        if text in ["what time is it", "tell me the time", "what is the time", "current time", "time"]:
+            current_time = datetime.now().strftime("%I:%M %p")
+            return Intent(
+                category=IntentCategory.AI_QUERY,
+                action="query",
+                params={"query": transcript},
+                confirmation_prompt=f"It is currently {current_time}.",
+            )
+
+        if text in ["what date is today", "what is today's date", "what's today's date", "today's date", "what day is it", "what is the date"]:
+            current_date = datetime.now().strftime("%A, %B %d, %Y")
+            return Intent(
+                category=IntentCategory.AI_QUERY,
+                action="query",
+                params={"query": transcript},
+                confirmation_prompt=f"Today is {current_date}.",
+            )
+
+        # ===================================================================
+        # 4. WhatsApp Messaging (Desktop App + Web)
+        # ===================================================================
+
+        # "send a whatsapp message to [name]" or "whatsapp [name]"
+        wa_send_match = re.search(
+            r"(?:send\s+(?:a\s+)?(?:whatsapp|whats app)\s+(?:message\s+)?to\s+)(.+?)(?:\s+saying\s+(.+))?$", text
+        )
+        if wa_send_match:
+            contact = wa_send_match.group(1).strip()
+            message_body = wa_send_match.group(2).strip() if wa_send_match.group(2) else ""
+            return Intent(
+                category=IntentCategory.MESSAGING,
+                target="WhatsApp",
+                action="send_whatsapp",
+                params={"contact": contact, "message": message_body},
+            )
+
+        # "message [name] on whatsapp" / "text [name] on whatsapp"
+        wa_msg_match = re.search(r"(?:message|text)\s+(.+?)\s+on\s+(?:whatsapp|whats app)", text)
+        if wa_msg_match:
+            contact = wa_msg_match.group(1).strip()
+            return Intent(
+                category=IntentCategory.MESSAGING,
+                target="WhatsApp",
+                action="send_whatsapp",
+                params={"contact": contact, "message": ""},
+            )
+
+        # "open whatsapp" (Desktop app)
+        if re.search(r"\b(open|launch|start)\s+(?:whatsapp|whats app)\b", text):
+            return Intent(category=IntentCategory.APP_LAUNCH, target="WhatsApp", action="launch_app", params={"app_name": "whatsapp"})
+
+        # "whatsapp [name]" shortcut
+        wa_shortcut = re.match(r"^(?:whatsapp|whats app)\s+(.+)$", text)
+        if wa_shortcut:
+            contact = wa_shortcut.group(1).strip()
+            return Intent(
+                category=IntentCategory.MESSAGING,
+                target="WhatsApp",
+                action="send_whatsapp",
+                params={"contact": contact, "message": ""},
+            )
+
+        # ===================================================================
+        # 5. Email
+        # ===================================================================
+
+        # "send an email to [person] about [subject]" / "email [person] saying [body]"
+        email_match = re.search(
+            r"(?:send\s+(?:an?\s+)?(?:email|mail)\s+to\s+)(.+?)(?:\s+(?:about|regarding|subject|saying)\s+(.+))?$", text
+        )
+        if email_match:
+            recipient = email_match.group(1).strip()
+            subject = email_match.group(2).strip() if email_match.group(2) else ""
+            return Intent(
+                category=IntentCategory.EMAIL,
+                target="Gmail",
+                action="compose_email",
+                params={"recipient": recipient, "subject": subject},
+            )
+
+        # "compose email" / "new email" / "write an email"
+        if re.search(r"\b(compose|write|draft|new)\s+(?:an?\s+)?(?:email|mail)\b", text):
+            return Intent(
+                category=IntentCategory.EMAIL,
+                target="Gmail",
+                action="compose_email",
+                params={"recipient": "", "subject": ""},
+            )
+
+        # "check my email" / "open email" / "open gmail"
+        if re.search(r"\b(check|open|read)\s+(?:my\s+)?(?:email|emails|mail|inbox|gmail)\b", text):
+            return Intent(
+                category=IntentCategory.WEB_NAVIGATION,
+                target="Gmail",
+                action="open_url",
+                params={"url": "https://mail.google.com"},
+            )
+
+        # ===================================================================
+        # 6. Telegram
+        # ===================================================================
+
+        tg_send_match = re.search(r"(?:send\s+(?:a\s+)?telegram\s+(?:message\s+)?to\s+)(.+?)(?:\s+saying\s+(.+))?$", text)
+        if tg_send_match:
+            contact = tg_send_match.group(1).strip()
+            message_body = tg_send_match.group(2).strip() if tg_send_match.group(2) else ""
+            return Intent(
+                category=IntentCategory.MESSAGING,
+                target="Telegram",
+                action="send_telegram",
+                params={"contact": contact, "message": message_body},
+            )
+
+        if re.search(r"\b(open|launch|start)\s+telegram\b", text):
+            return Intent(category=IntentCategory.APP_LAUNCH, target="Telegram", action="launch_app", params={"app_name": "telegram"})
+
+        # ===================================================================
+        # 7. SMS / General Messaging
+        # ===================================================================
+
+        sms_match = re.search(r"(?:send\s+(?:a\s+)?(?:message|text|sms)\s+to\s+)(.+?)(?:\s+saying\s+(.+))?$", text)
+        if sms_match and "whatsapp" not in text and "telegram" not in text and "email" not in text:
+            contact = sms_match.group(1).strip()
+            message_body = sms_match.group(2).strip() if sms_match.group(2) else ""
+            return Intent(
+                category=IntentCategory.MESSAGING,
+                target="WhatsApp",
+                action="send_whatsapp",
+                params={"contact": contact, "message": message_body},
+            )
+
+        # ===================================================================
+        # 8. Phone Call (via WhatsApp or link)
+        # ===================================================================
+
+        call_match = re.search(r"(?:call|phone|ring)\s+(.+?)(?:\s+on\s+(?:whatsapp|whats app))?$", text)
+        if call_match:
+            contact = call_match.group(1).strip()
+            if contact not in ["mom", "dad", "me"] and len(contact) > 1:
+                return Intent(
+                    category=IntentCategory.PHONE_CALL,
+                    target="WhatsApp",
+                    action="call_contact",
+                    params={"contact": contact},
+                )
+
+        # ===================================================================
+        # 9. System Lock & Power
+        # ===================================================================
+
+        if re.search(r"\b(lock\s+(my\s+)?(pc|computer|screen|workstation|laptop))|(lock it)\b", text):
+            return Intent(category=IntentCategory.SYSTEM_CONTROL, action="lock_pc")
+
+        if re.search(r"\b(shut\s*down|power\s+off|turn\s+off)\s+(my\s+)?(pc|computer|laptop)\b", text):
+            return Intent(
+                category=IntentCategory.SYSTEM_CONTROL,
+                action="shutdown",
+                requires_confirmation=True,
+                confirmation_prompt="Are you sure you want to shut down the computer?",
+            )
+
+        if re.search(r"\b(restart|reboot)\s+(my\s+)?(pc|computer|laptop)\b", text):
+            return Intent(
+                category=IntentCategory.SYSTEM_CONTROL,
+                action="restart_pc",
+                requires_confirmation=True,
+                confirmation_prompt="Are you sure you want to restart the computer?",
+            )
+
+        if re.search(r"\b(sleep|hibernate)\s+(my\s+)?(pc|computer|laptop)\b", text) or text == "go to sleep":
+            return Intent(category=IntentCategory.SYSTEM_CONTROL, action="sleep_pc")
+
+        # ===================================================================
+        # 10. Volume Controls
+        # ===================================================================
+
+        if "volume up" in text or "increase volume" in text or "louder" in text or "turn up volume" in text:
+            return Intent(category=IntentCategory.SYSTEM_CONTROL, action="volume_up")
+        if "volume down" in text or "decrease volume" in text or "quieter" in text or "turn down volume" in text or "lower volume" in text:
+            return Intent(category=IntentCategory.SYSTEM_CONTROL, action="volume_down")
+        if text in ["mute", "unmute", "toggle mute"] or "mute" in text:
+            return Intent(category=IntentCategory.SYSTEM_CONTROL, action="mute")
+
+        # Set volume to X%
+        vol_match = re.search(r"(?:set\s+)?volume\s+(?:to\s+)?(\d+)\s*%?", text)
+        if vol_match:
+            level = int(vol_match.group(1))
+            return Intent(category=IntentCategory.SYSTEM_CONTROL, action="set_volume", params={"level": level})
+
+        # ===================================================================
+        # 11. Brightness Controls
+        # ===================================================================
+
+        if "brightness up" in text or "increase brightness" in text or "brighter" in text:
+            return Intent(category=IntentCategory.SYSTEM_CONTROL, action="brightness_up")
+        if "brightness down" in text or "decrease brightness" in text or "dimmer" in text or "dim screen" in text:
+            return Intent(category=IntentCategory.SYSTEM_CONTROL, action="brightness_down")
+
+        # ===================================================================
+        # 12. Media Controls (Play/Pause/Skip)
+        # ===================================================================
+
+        if text in ["play", "resume", "play music", "resume music", "unpause"]:
+            return Intent(category=IntentCategory.MEDIA_CONTROL, action="play_pause")
+        if text in ["pause", "pause music", "pause video"]:
+            return Intent(category=IntentCategory.MEDIA_CONTROL, action="play_pause")
+        if text in ["next", "next song", "next track", "skip", "skip song"]:
+            return Intent(category=IntentCategory.MEDIA_CONTROL, action="next_track")
+        if text in ["previous", "previous song", "previous track", "go back", "last song"]:
+            return Intent(category=IntentCategory.MEDIA_CONTROL, action="previous_track")
+
+        # "play [song] on youtube/spotify"
+        play_match = re.search(r"play\s+(.+?)(?:\s+on\s+(youtube|spotify))?$", text)
+        if play_match and text.startswith("play "):
+            query = play_match.group(1).strip()
+            platform = play_match.group(2) or "youtube"
+            if platform == "youtube":
+                return Intent(category=IntentCategory.WEB_SEARCH, target="YouTube", action="search_youtube", params={"query": query})
+            elif platform == "spotify":
+                return Intent(category=IntentCategory.MUSIC, target="Spotify", action="play_spotify", params={"query": query})
+
+        # ===================================================================
+        # 13. Window Controls (Minimize, Maximize, Close active)
+        # ===================================================================
+
+        if text in ["close window", "close this window", "close this", "close active window"]:
+            return Intent(category=IntentCategory.WINDOW_CONTROL, action="close_active")
+
+        if re.search(r"\b(minimize(\s+this)?(\s+window)?)\b", text):
+            return Intent(category=IntentCategory.WINDOW_CONTROL, action="minimize")
+        if re.search(r"\b(maximize(\s+this)?(\s+window)?)\b", text):
+            return Intent(category=IntentCategory.WINDOW_CONTROL, action="maximize")
+
+        # Split screen / snap
+        if "snap left" in text or "move left" in text:
+            return Intent(category=IntentCategory.KEYBOARD_SHORTCUT, action="hotkey", params={"keys": ["win", "left"]})
+        if "snap right" in text or "move right" in text:
+            return Intent(category=IntentCategory.KEYBOARD_SHORTCUT, action="hotkey", params={"keys": ["win", "right"]})
+
+        # ===================================================================
+        # 14. Screenshot
+        # ===================================================================
+
+        if text in ["take a screenshot", "screenshot", "capture screen", "take screenshot", "screen capture", "snip"]:
+            return Intent(category=IntentCategory.SCREENSHOT, action="screenshot")
+
+        # ===================================================================
+        # 15. Clipboard
+        # ===================================================================
+
+        if text in ["copy", "copy that", "copy this"]:
+            return Intent(category=IntentCategory.KEYBOARD_SHORTCUT, action="hotkey", params={"keys": ["ctrl", "c"]})
+        if text in ["paste", "paste that", "paste it"]:
+            return Intent(category=IntentCategory.KEYBOARD_SHORTCUT, action="hotkey", params={"keys": ["ctrl", "v"]})
+        if text in ["cut", "cut this", "cut that"]:
+            return Intent(category=IntentCategory.KEYBOARD_SHORTCUT, action="hotkey", params={"keys": ["ctrl", "x"]})
+        if text in ["undo", "undo that"]:
+            return Intent(category=IntentCategory.KEYBOARD_SHORTCUT, action="hotkey", params={"keys": ["ctrl", "z"]})
+        if text in ["redo", "redo that"]:
+            return Intent(category=IntentCategory.KEYBOARD_SHORTCUT, action="hotkey", params={"keys": ["ctrl", "y"]})
+        if text in ["select all", "select everything"]:
+            return Intent(category=IntentCategory.KEYBOARD_SHORTCUT, action="hotkey", params={"keys": ["ctrl", "a"]})
+
+        # ===================================================================
+        # 16. Popular Website Direct Launching
+        # ===================================================================
+
+        for site_name, site_url in POPULAR_SITES.items():
+            if text == f"open {site_name}" or text == f"go to {site_name}" or text == f"launch {site_name}":
+                if site_name == "youtube":
+                    return Intent(category=IntentCategory.WEB_NAVIGATION, target="YouTube", action="open_youtube")
+                return Intent(category=IntentCategory.WEB_NAVIGATION, target=site_name.title(), action="open_url", params={"url": site_url})
+
+        # ===================================================================
+        # 17. YouTube & Web Searches
+        # ===================================================================
+
+        yt_search_match = re.search(r"search\s+(youtube\s+for|for)\s+(.+?)(\s+on\s+youtube)?$", text)
+        if ("youtube" in text and "search" in text) or (context_engine.get_active_target() == "YouTube" and text.startswith("search")):
+            query = ""
+            if "for" in text:
+                query = text.split("for", 1)[1].replace("on youtube", "").replace("youtube", "").strip()
+            elif "search" in text:
+                query = text.replace("search", "").replace("youtube", "").strip()
+            if query:
+                return Intent(category=IntentCategory.WEB_SEARCH, target="YouTube", action="search_youtube", params={"query": query})
+
+        # Open YouTube
+        if re.search(r"\b(open|launch|go to|take me to)\s+youtube\b", text):
+            return Intent(category=IntentCategory.WEB_NAVIGATION, target="YouTube", action="open_youtube")
+
+        # Generic Web Search: "search google for..." or "google..." or "search for..."
+        if text.startswith("search google for ") or text.startswith("google "):
+            q = text.replace("search google for ", "").replace("google ", "").strip()
+            return Intent(category=IntentCategory.WEB_SEARCH, target="Google", action="search_google", params={"query": q})
+
+        if text.startswith("search for ") and "file" not in text:
+            q = text.replace("search for ", "").strip()
+            return Intent(category=IntentCategory.WEB_SEARCH, target="Google", action="search_google", params={"query": q})
+
+        # "search [query]"
+        if text.startswith("search ") and "file" not in text and "youtube" not in text:
+            q = text.replace("search ", "").strip()
+            if q:
+                return Intent(category=IntentCategory.WEB_SEARCH, target="Google", action="search_google", params={"query": q})
+
+        # Open Web URL: e.g. "open github.com"
+        url_match = re.search(r"\b(open|go to)\s+([a-zA-Z0-9-]+\.(com|org|net|io|dev|ai|edu|gov|in|co))\b", text)
+        if url_match:
+            return Intent(category=IntentCategory.WEB_NAVIGATION, target="Browser", action="open_url", params={"url": url_match.group(2)})
+
+        # Scrolling
+        if "scroll down" in text:
+            return Intent(category=IntentCategory.BROWSER_ACTION, action="scroll_down")
+        if "scroll up" in text:
+            return Intent(category=IntentCategory.BROWSER_ACTION, action="scroll_up")
+
+        # Browser Tabs
+        if "new tab" in text or "open tab" in text:
+            return Intent(category=IntentCategory.BROWSER_ACTION, action="new_tab")
+        if "close tab" in text:
+            return Intent(category=IntentCategory.BROWSER_ACTION, action="close_tab")
+        if "refresh" in text or "reload" in text:
+            return Intent(category=IntentCategory.BROWSER_ACTION, action="refresh")
+        if "go back" in text or "back page" in text:
+            return Intent(category=IntentCategory.BROWSER_ACTION, action="back")
+        if "go forward" in text or "forward page" in text:
+            return Intent(category=IntentCategory.BROWSER_ACTION, action="forward")
+
+        # ===================================================================
+        # 18. Windows Applications Launch / Close / Focus
+        # ===================================================================
+
+        # Specific app shortcuts that would be caught by generic patterns
+        if text in ["open file explorer", "launch file explorer", "file explorer"]:
+            return Intent(category=IntentCategory.KEYBOARD_SHORTCUT, action="hotkey", params={"keys": ["win", "e"]})
+        if text in ["open task manager", "task manager", "launch task manager"]:
+            return Intent(category=IntentCategory.KEYBOARD_SHORTCUT, action="hotkey", params={"keys": ["ctrl", "shift", "escape"]})
+
+        # Specific known folders
+        known_folder_match = re.search(r"open\s+(my\s+)?(downloads|documents|pictures|screenshots|videos|music|desktop)(\s+folder|\s+files)?$", text)
+        if known_folder_match:
+            folder_name = known_folder_match.group(2).strip()
+            return Intent(category=IntentCategory.FILE_OPEN, target="Filesystem", action="open_folder", params={"folder": folder_name})
+
+        launch_match = re.search(r"^(open|launch|start|run)\s+([a-zA-Z0-9\s]+)$", text)
+        if launch_match:
+            app_raw = launch_match.group(2).strip()
+            if app_raw not in POPULAR_SITES:
+                # Check if it's a file request
+                if "my " in app_raw or (app_raw.startswith("file") and app_raw != "files") or app_raw.endswith((".pdf", ".txt", ".docx", ".png")):
+                    query = app_raw.replace("my ", "").replace("file", "").strip()
+                    return Intent(category=IntentCategory.FILE_OPEN, target="Filesystem", action="open_file", params={"query": query})
+
+                return Intent(category=IntentCategory.APP_LAUNCH, target=app_raw.title(), action="launch_app", params={"app_name": app_raw})
+
+        close_match = re.search(r"^(close|quit|exit|kill)\s+([a-zA-Z0-9\s]+)$", text)
+        if close_match:
+            app_raw = close_match.group(2).strip()
+            return Intent(category=IntentCategory.APP_CLOSE, target=app_raw.title(), action="close_app", params={"app_name": app_raw})
+
+        focus_match = re.search(r"^(switch to|focus|bring up|go to|alt tab to)\s+([a-zA-Z0-9\s]+)$", text)
+        if focus_match:
+            app_raw = focus_match.group(2).strip()
+            if app_raw not in POPULAR_SITES:
+                return Intent(category=IntentCategory.APP_FOCUS, target=app_raw.title(), action="focus_app", params={"app_name": app_raw})
+
+        # ===================================================================
+        # 19. File System
+        # ===================================================================
+
+        find_match = re.search(r"^(find|search for|locate)\s+(my\s+)?([a-zA-Z0-9\s\.\-_]+)$", text)
+        if find_match and "youtube" not in text and "google" not in text:
+            query = find_match.group(3).replace("file", "").strip()
+            return Intent(category=IntentCategory.FILE_SEARCH, target="Filesystem", action="find_file", params={"query": query})
+
+        # Create folder
+        folder_match = re.search(r"create\s+(a\s+)?folder\s+(called|named)?\s*([a-zA-Z0-9_-]+)", text)
+        if folder_match:
+            name = folder_match.group(3).strip()
+            return Intent(category=IntentCategory.FILE_CREATE, target="Filesystem", action="create_folder", params={"name": name})
+
+        # Create file
+        file_create_match = re.search(r"create\s+(a\s+)?file\s+(called|named)?\s*([a-zA-Z0-9_\-\.]+)", text)
+        if file_create_match:
+            name = file_create_match.group(3).strip()
+            return Intent(category=IntentCategory.FILE_CREATE, target="Filesystem", action="create_file", params={"name": name})
+
+        # Delete: "delete the file test.txt" -> Consequential!
+        del_match = re.search(r"delete\s+(the\s+file\s+)?([a-zA-Z0-9_\-\.]+)", text)
+        if del_match:
+            target_name = del_match.group(2).strip()
+            return Intent(
+                category=IntentCategory.FILE_DELETE,
+                target="Filesystem",
+                action="delete_file",
+                params={"target": target_name},
+                requires_confirmation=True,
+                confirmation_prompt=f"Delete file: {target_name}",
+            )
+
+        # ===================================================================
+        # 20. Keyboard Shortcuts
+        # ===================================================================
+
+        if text in ["task manager", "open task manager"]:
+            return Intent(category=IntentCategory.KEYBOARD_SHORTCUT, action="hotkey", params={"keys": ["ctrl", "shift", "escape"]})
+        if text in ["show desktop", "desktop", "go to desktop"]:
+            return Intent(category=IntentCategory.KEYBOARD_SHORTCUT, action="hotkey", params={"keys": ["win", "d"]})
+        if text in ["task view", "virtual desktops", "show all windows"]:
+            return Intent(category=IntentCategory.KEYBOARD_SHORTCUT, action="hotkey", params={"keys": ["win", "tab"]})
+        if text in ["action center", "notifications", "notification center"]:
+            return Intent(category=IntentCategory.KEYBOARD_SHORTCUT, action="hotkey", params={"keys": ["win", "a"]})
+        if text in ["file explorer", "open file explorer", "my computer", "this pc"]:
+            return Intent(category=IntentCategory.KEYBOARD_SHORTCUT, action="hotkey", params={"keys": ["win", "e"]})
+        if text in ["settings", "open settings", "system settings", "windows settings"]:
+            return Intent(category=IntentCategory.APP_LAUNCH, target="Settings", action="launch_app", params={"app_name": "settings"})
+        if text in ["emoji", "emojis", "open emoji", "emoji picker"]:
+            return Intent(category=IntentCategory.KEYBOARD_SHORTCUT, action="hotkey", params={"keys": ["win", "."]})
+
+        # ===================================================================
+        # 21. Screen & Cursor Vision
+        # ===================================================================
+
+        if text in ["what is on my screen", "explain this page", "read this error", "what is on my screen?", "analyze screen", "read screen", "what's on my screen"]:
+            return Intent(category=IntentCategory.SCREEN_ANALYSIS, action="capture_screen", params={"prompt": text})
+
+        if text in ["what is this", "what does this do", "what is this?", "explain this button", "what am I looking at"]:
+            return Intent(category=IntentCategory.CURSOR_ANALYSIS, action="capture_cursor_region", params={"prompt": text})
+
+        # ===================================================================
+        # 22. VoiceOS Dictation: "dictate: ..." or "type ..."
+        # ===================================================================
+
+        if text.startswith("dictate ") or text.startswith("type "):
+            clean_dictation = text.replace("dictate ", "", 1).replace("type ", "", 1)
+            return Intent(category=IntentCategory.DICTATION, action="dictate", params={"text": clean_dictation})
+
+        # ===================================================================
+        # 23. Reminders (spoken acknowledgment)
+        # ===================================================================
+
+        remind_match = re.search(r"remind\s+me\s+(?:to\s+)?(.+?)(?:\s+in\s+(\d+)\s+(minutes?|hours?|seconds?))?$", text)
+        if remind_match:
+            task = remind_match.group(1).strip()
+            amount = int(remind_match.group(2)) if remind_match.group(2) else 5
+            unit = remind_match.group(3) or "minutes"
+            return Intent(
+                category=IntentCategory.REMINDER,
+                action="set_reminder",
+                params={"task": task, "amount": amount, "unit": unit},
+            )
+
+        # ===================================================================
+        # 24. Calculations & conversions
+        # ===================================================================
+
+        calc_match = re.search(r"(?:what is|what's|calculate|compute)\s+([\d\s\+\-\*\/\.\(\)%]+)$", text)
+        if calc_match:
+            expr = calc_match.group(1).strip()
+            try:
+                result = eval(expr)  # noqa: S307 - safe: only digits and operators
+                return Intent(
+                    category=IntentCategory.AI_QUERY,
+                    action="query",
+                    params={"query": transcript},
+                    confirmation_prompt=f"The answer is {result}.",
+                )
+            except Exception:
+                pass
+
+        # ===================================================================
+        # 25. Calendar
+        # ===================================================================
+
+        if text in ["open calendar", "show my calendar", "calendar"]:
+            return Intent(category=IntentCategory.CALENDAR, action="open_calendar")
+
+        cal_match = re.search(r"schedule\s+a\s+meeting\s+with\s+(.+?)\s+on\s+(.+?)(?:\s+at\s+(.+))?$", text)
+        if cal_match:
+            return Intent(
+                category=IntentCategory.CALENDAR,
+                action="create_event",
+                params={
+                    "title": f"Meeting with {cal_match.group(1)}",
+                    "date": cal_match.group(2).strip(),
+                    "time": cal_match.group(3).strip() if cal_match.group(3) else ""
+                }
+            )
+
+        # ===================================================================
+        # 26. Tasks & Todos
+        # ===================================================================
+
+        if text in ["what are my tasks", "list my tasks", "show my tasks", "what do i need to do", "my tasks", "my todos"]:
+            return Intent(category=IntentCategory.TASK, action="list_tasks", params={"status": "pending"})
+
+        task_add_match = re.search(r"(?:add\s+to\s+(?:my\s+)?(?:todo\s+list|tasks?)|remind\s+me\s+to|todo)\s+(.+?)(?:\s+due\s+(.+))?$", text)
+        if task_add_match:
+            return Intent(
+                category=IntentCategory.TASK,
+                action="add_task",
+                params={
+                    "title": task_add_match.group(1).strip(),
+                    "due": task_add_match.group(2).strip() if task_add_match.group(2) else ""
+                }
+            )
+
+        task_done_match = re.search(r"(?:mark|set)\s+(?:task|todo)\s+(.+?)\s+as\s+(?:done|complete|completed)", text)
+        if task_done_match:
+            return Intent(category=IntentCategory.TASK, action="complete_task", params={"query": task_done_match.group(1).strip()})
+
+        # ===================================================================
+        # 27. Memory
+        # ===================================================================
+
+        if text in ["what do you remember", "list memories"]:
+            return Intent(category=IntentCategory.MEMORY, action="list_memories")
+
+        mem_store_match = re.search(r"(?:remember|memorize)\s+that\s+(.+?)\s+(?:is|are)\s+(.+)", text)
+        if mem_store_match:
+            return Intent(category=IntentCategory.MEMORY, action="remember", params={"key": mem_store_match.group(1).strip(), "value": mem_store_match.group(2).strip()})
+
+        mem_recall_match = re.search(r"(?:what\s+(?:is|are)|who\s+is|recall)\s+(?:my\s+)?(.+?)$", text)
+        if mem_recall_match and not "weather" in text and not "time" in text:
+            # Let the offline engine attempt a recall first
+            return Intent(category=IntentCategory.MEMORY, action="recall", params={"query": mem_recall_match.group(1).strip()})
+
+        history_match = re.search(r"what did i ask (you\s+)?(yesterday|today|last week|recently)", text)
+        if history_match:
+            return Intent(category=IntentCategory.MEMORY, action="recall_history", params={"timeframe": history_match.group(2).strip()})
+
+        # ===================================================================
+        # 28. Weather (delegate to AI)
+        # ===================================================================
+
+        if re.search(r"\b(weather|temperature|forecast)\b", text):
+            return None  # Falls through to AI provider for live data
+
+        return None
+
