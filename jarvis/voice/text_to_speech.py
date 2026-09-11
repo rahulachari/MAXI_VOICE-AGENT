@@ -37,6 +37,35 @@ AVAILABLE_VOICES = {
 }
 
 
+def clean_spoken_text(text: str) -> str:
+    """Cleans text to make it natural and conversational for spoken output."""
+    if not text:
+        return ""
+
+    import re
+    # If text is raw JSON, extract spoken_response or message
+    if text.strip().startswith("{") and text.strip().endswith("}"):
+        try:
+            import json
+            data = json.loads(text)
+            text = data.get("spoken_response") or data.get("message") or data.get("answer") or ""
+        except Exception:
+            m = re.search(r'"spoken_response":\s*"([^"]+)"', text)
+            if m:
+                text = m.group(1)
+            else:
+                text = re.sub(r'[\{\}\[\]"\'\\]', '', text)
+                text = re.sub(r'(category|action|target|params):', '', text)
+
+    # Strip code blocks and markdown symbols
+    text = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
+    text = re.sub(r'`([^`]+)`', r'\1', text)
+    text = re.sub(r'[*_#~>|]', '', text)
+    text = re.sub(r'https?://\S+', 'link', text)
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
+
+
 class TextToSpeechEngine:
     def __init__(self):
         self._stop_event = threading.Event()
@@ -60,7 +89,8 @@ class TextToSpeechEngine:
         self._is_speaking = False
 
     def speak(self, text: str, on_finish: Optional[Callable[[], None]] = None):
-        if not text or not text.strip():
+        clean_text = clean_spoken_text(text)
+        if not clean_text:
             if on_finish:
                 on_finish()
             return
@@ -81,13 +111,13 @@ class TextToSpeechEngine:
                 success = False
                 # 1. Try high-definition neural voice first
                 try:
-                    success = self._speak_neural(text)
+                    success = self._speak_neural(clean_text)
                 except Exception as e:
                     print(f"[TTS] Neural TTS failed, falling back to SAPI5: {e}")
 
                 # 2. Fallback to offline SAPI5 if neural fails or offline
                 if not success and not self._stop_event.is_set():
-                    self._speak_sapi5(text)
+                    self._speak_sapi5(clean_text)
 
                 self._is_speaking = False
                 if on_finish and not self._stop_event.is_set():
@@ -97,7 +127,7 @@ class TextToSpeechEngine:
         self._current_thread.start()
 
     def _speak_neural(self, text: str) -> bool:
-        """Synthesizes speech using edge-tts AriaNeural and plays via pygame mixer."""
+        """Synthesizes speech using edge-tts and plays via pygame mixer."""
         temp_path = os.path.join(tempfile.gettempdir(), f"jarvis_speech_{int(time.time()*1000)}.mp3")
 
         async def _generate():
@@ -105,21 +135,7 @@ class TextToSpeechEngine:
             rate = config.get("tts_rate", 190)
             # Map rate: 190 → +5% (slightly faster for smart/professional tone)
             rate_percent = f"{int((rate - 180) / 1.8):+d}%"
-
-            # Build SSML for professional prosody when using Aria
-            if "Aria" in voice or "Jenny" in voice or "Sonia" in voice:
-                # Use SSML for natural pitch and contour
-                ssml = f"""<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'>
-                    <voice name='{voice}'>
-                        <prosody rate='{rate_percent}' pitch='+2%' volume='+5%'>
-                            {_escape_ssml(text)}
-                        </prosody>
-                    </voice>
-                </speak>"""
-                communicate = edge_tts.Communicate(ssml, voice)
-            else:
-                communicate = edge_tts.Communicate(text, voice, rate=rate_percent)
-
+            communicate = edge_tts.Communicate(text, voice, rate=rate_percent)
             await communicate.save(temp_path)
 
         asyncio.run(_generate())

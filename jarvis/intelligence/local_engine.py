@@ -593,10 +593,12 @@ class LocalSemanticEngine:
         if mem_store_match:
             return Intent(category=IntentCategory.MEMORY, action="remember", params={"key": mem_store_match.group(1).strip(), "value": mem_store_match.group(2).strip()})
 
-        mem_recall_match = re.search(r"(?:what\s+(?:is|are)|who\s+is|recall)\s+(?:my\s+)?(.+?)$", text)
-        if mem_recall_match and not "weather" in text and not "time" in text:
-            # Let the offline engine attempt a recall first
-            return Intent(category=IntentCategory.MEMORY, action="recall", params={"query": mem_recall_match.group(1).strip()})
+        # Personal memory recall must strictly require 'my' or 'remember about'
+        mem_recall_match = re.search(r"(?:what\s+(?:is|are)|who\s+is)\s+my\s+(.+?)$|^(?:recall|what do you remember about)\s+(.+?)$", text)
+        if mem_recall_match:
+            query_term = (mem_recall_match.group(1) or mem_recall_match.group(2) or "").strip()
+            if query_term:
+                return Intent(category=IntentCategory.MEMORY, action="recall", params={"query": query_term})
 
         history_match = re.search(r"what did i ask (you\s+)?(yesterday|today|last week|recently)", text)
         if history_match:

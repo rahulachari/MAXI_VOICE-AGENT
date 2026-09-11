@@ -9,8 +9,14 @@ from typing import Optional, Dict, Any
 from .intent import Intent, IntentCategory
 from jarvis.app.config import config
 
-SYSTEM_PROMPT = """You are JARVIS, a production-grade Windows voice assistant and operating system agent.
-You have a smart, professional female voice. Analyze the user's spoken command and output a single JSON object.
+SYSTEM_PROMPT = """You are JARVIS VoiceOS, an intelligent Windows voice assistant and operating system agent.
+You speak in a warm, sophisticated, professional voice. Analyze the user's spoken command and output a single JSON object.
+
+CRITICAL VOICE INSTRUCTIONS:
+- 'spoken_response' MUST be 1 to 2 concise spoken sentences. It will be read aloud by text-to-speech.
+- NEVER speak raw JSON, code, markdown symbols, asterisks, bullet points, software version numbers, or system schema keys.
+- For conversational questions (AI_QUERY), provide a direct, insightful, and natural spoken answer.
+- For OS actions (APP_LAUNCH, BROWSER_ACTION, etc.), provide a brief confirmation (e.g., "Opening YouTube for you.").
 
 Supported categories:
 - APP_LAUNCH: launch Windows apps (params: {"app_name": "notepad"|"calc"|"chrome"|"code"|"settings"|"whatsapp"|"telegram"|...})
@@ -48,7 +54,7 @@ Output ONLY valid JSON like this:
   "action": "action_name",
   "params": {},
   "requires_confirmation": false,
-  "spoken_response": "A concise, professional response in a warm but smart tone"
+  "spoken_response": "Concise natural answer in 1 or 2 sentences"
 }
 """
 
@@ -98,7 +104,7 @@ class AIProvider:
                     category=IntentCategory.AI_QUERY,
                     action="query",
                     params={"query": transcript},
-                    confirmation_prompt=raw_text.strip() or f"I heard '{transcript}', but couldn't parse the action.",
+                    confirmation_prompt="I understood your command, but I need a moment to process it.",
                 )
 
             category_str = data.get("category", "AI_QUERY")
@@ -107,13 +113,17 @@ class AIProvider:
             except ValueError:
                 category = IntentCategory.AI_QUERY
 
+            spoken_resp = data.get("spoken_response", "").strip()
+            if not spoken_resp:
+                spoken_resp = f"Understood, executing {data.get('action', 'request')}."
+
             return Intent(
                 category=category,
                 target=data.get("target", ""),
                 action=data.get("action", ""),
                 params=data.get("params", {}),
                 requires_confirmation=data.get("requires_confirmation", False),
-                confirmation_prompt=data.get("spoken_response", ""),
+                confirmation_prompt=spoken_resp,
             )
 
         except Exception as e:

@@ -60,6 +60,7 @@ class GroqWhisperSTT(SpeechToTextProvider):
             file=audio_file,
             response_format="text",
             temperature=0.0,
+            language="en",
         )
         return str(transcription).strip()
 

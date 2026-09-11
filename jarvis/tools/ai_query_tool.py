@@ -14,8 +14,11 @@ class AIQueryTool(BaseTool):
     def execute(self, action: str, **kwargs) -> ToolResult:
         query = kwargs.get("query", "")
         precomputed = kwargs.get("answer")
+        from jarvis.voice.text_to_speech import clean_spoken_text
+
         if precomputed:
-            return ToolResult(status="SUCCESS", message=precomputed, data={"query": query, "answer": precomputed})
+            cleaned = clean_spoken_text(precomputed)
+            return ToolResult(status="SUCCESS", message=cleaned, data={"query": query, "answer": cleaned})
 
         if not query:
             return ToolResult(status="FAILED", message="No query provided.")
@@ -31,16 +34,17 @@ class AIQueryTool(BaseTool):
                         {
                             "role": "system",
                             "content": (
-                                "You are JARVIS, Tony Stark's sophisticated AI assistant. "
-                                "Answer the user concisely in 1 to 2 spoken sentences, direct and intelligent."
+                                "You are JARVIS VoiceOS, an intelligent AI companion. "
+                                "Answer the user concisely in 1 to 2 spoken sentences. Be direct, conversational, and articulate. "
+                                "Never include markdown symbols, bullets, asterisks, code blocks, or software version numbers."
                             ),
                         },
                         {"role": "user", "content": query},
                     ],
-                    max_tokens=120,
+                    max_tokens=300,
                     temperature=0.3,
                 )
-                answer = resp.choices[0].message.content.strip()
+                answer = clean_spoken_text(resp.choices[0].message.content or "")
                 return ToolResult(status="SUCCESS", message=answer, data={"query": query, "answer": answer})
             except Exception as e:
                 return ToolResult(status="FAILED", message=f"AI service error: {e}", error=str(e))

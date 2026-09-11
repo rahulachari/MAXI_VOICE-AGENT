@@ -204,9 +204,8 @@ class VoiceOSNotch(QWidget):
         
         # Dynamic height calculation based on layout content
         self.container.adjustSize()
-        calc_height = self.container.sizeHint().height() + 20
-        # Ensure it doesn't shrink below normal height
-        h = target_height or max(self._normal_height, calc_height)
+        calc_height = self.container.sizeHint().height() + 10
+        h = max(target_height or self._normal_height, calc_height)
 
         x = geom.x() + (geom.width() - w) // 2
         y = geom.y()
@@ -247,7 +246,7 @@ class VoiceOSNotch(QWidget):
             self.prompt_label.setText(text or "Analyzing intent...")
             self.status_pill.setText("🔍 Processing...")
             self.status_pill.show()
-            self.reposition(self._width, self._normal_height)
+            self.reposition(self._width)
 
         elif state == "EXECUTING":
             self.prompt_label.setText(text or "Performing action...")
@@ -261,10 +260,10 @@ class VoiceOSNotch(QWidget):
 
         elif state == "SPEAKING":
             self.prompt_label.setText(text)
-            self.status_pill.setText("✓ Done")
+            self.status_pill.setText("⚡ Speaking...")
             self.status_pill.show()
             self.action_card.hide()
-            self.reposition(self._width, self._normal_height)
+            self.reposition(self._width)
 
         elif state == "CONFIRMATION_REQUIRED":
             self.prompt_label.setText(text or "Safety approval required")

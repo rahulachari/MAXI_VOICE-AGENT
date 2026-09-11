@@ -272,11 +272,11 @@ class LifecycleManager(QObject):
 
         # Spoken response with barge-in support and auto-disappear upon completion
         def on_tts_finish():
-            # Calculate reading delay based on text length so users have time to read
-            reading_time = 1.2 + min(len(status_text) * 0.04, 6.0)
-            time.sleep(reading_time)
-            self.sig_disappear.emit()
-            self.sig_set_state.emit("IDLE", "Ready • Hold Ctrl+Alt to speak")
+            # Keep notch visible for 2.5s after audio finishes so user can read the response
+            time.sleep(2.5)
+            if not tts_engine.is_speaking() and not self.recorder.is_recording:
+                self.sig_disappear.emit()
+                self.sig_set_state.emit("IDLE", "Ready • Hold Ctrl+Alt to speak")
 
         tts_engine.speak(status_text, on_finish=on_tts_finish)
 
