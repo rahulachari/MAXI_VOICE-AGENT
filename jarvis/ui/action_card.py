@@ -1,13 +1,11 @@
 """
-JARVIS VoiceOS Approval Card (Human-In-The-Loop)
-Modern question & action confirmation card matching the ApprovalCard design:
-Multi-step question navigation, rolling odometer step indicators, radio & check options,
-custom write-in answer input, quiet 'Skip' and accent 'Continue ⏎' buttons,
-and animated sent approval badges.
+JARVIS Liquid Glass Action Card
+A minimal, dark, glassmorphic floating panel matching VoiceOS design aesthetics.
+Appears near the cursor when the assistant stages or confirms an action.
 """
 
-from typing import List, Dict, Optional, Union
-from PySide6.QtCore import Qt, Signal, QTimer
+from typing import List, Dict, Optional, Callable, Any
+from PySide6.QtCore import Qt, Signal, QPoint, QTimer
 from PySide6.QtWidgets import (
     QWidget,
     QFrame,
@@ -15,396 +13,375 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
-    QLineEdit,
+    QGraphicsDropShadowEffect,
+    QApplication,
 )
-from PySide6.QtGui import QCursor, QFont
+from PySide6.QtGui import QColor, QFont, QCursor, QScreen
 
 
-class OptionRow(QPushButton):
-    """Interactive radio / checkbox row with animated selection indicator."""
-    def __init__(self, text: str, is_radio: bool = True, parent=None):
-        super().__init__(parent)
-        self.option_text = text
-        self.is_radio = is_radio
-        self._checked = False
-        self.setCursor(Qt.PointingHandCursor)
-        self.setCheckable(True)
-        self._update_appearance()
+# App Icons mapping (clean SVG/Unicode or fallback symbols)
+APP_ICONS = {
+    "gmail": "✉️",
+    "email": "✉️",
+    "calendar": "📅",
+    "slack": "💬",
+    "whatsapp": "💬",
+    "reminder": "⏰",
+    "task": "📝",
+    "search": "🌐",
+    "browser": "🌐",
+    "music": "🎵",
+    "spotify": "🎵",
+    "youtube": "▶️",
+    "settings": "⚙️",
+    "default": "⚡",
+}
 
-    def set_selected(self, selected: bool):
-        self._checked = selected
-        self._update_appearance()
 
-    def is_selected(self) -> bool:
-        return self._checked
-
-    def _update_appearance(self):
-        icon_shape = "border-radius: 8px;" if self.is_radio else "border-radius: 4px;"
-        if self._checked:
-            indicator_html = f"<span style='color: #000000; font-weight: bold;'>{'●' if self.is_radio else '✓'}</span>"
-            indicator_bg = "#ffffff"
-            text_color = "#ffffff"
-        else:
-            indicator_html = ""
-            indicator_bg = "rgba(255, 255, 255, 0.08)"
-            text_color = "#94a3b8"
-
-        self.setText(f"{'● ' if self._checked and self.is_radio else ('✓ ' if self._checked else '○ ')}{self.option_text}")
-        self.setStyleSheet(f"""
-            QPushButton {{
-                background: {"rgba(255, 255, 255, 0.08)" if self._checked else "rgba(255, 255, 255, 0.03)"};
-                color: {text_color};
-                border: 1px solid {"rgba(255, 255, 255, 0.25)" if self._checked else "rgba(255, 255, 255, 0.06)"};
-                border-radius: 8px;
-                padding: 6px 12px;
-                text-align: left;
-                font-size: 12.5px;
-                font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif;
-            }}
-            QPushButton:hover {{
+class PillBadge(QLabel):
+    """Subtle pill/chip for recognized contacts, recipients, or metadata tags."""
+    def __init__(self, text: str, parent=None):
+        super().__init__(text, parent)
+        self.setStyleSheet("""
+            QLabel {
                 background: rgba(255, 255, 255, 0.10);
                 color: #ffffff;
-                border-color: rgba(255, 255, 255, 0.18);
-            }}
+                border: 1px solid rgba(255, 255, 255, 0.14);
+                border-radius: 12px;
+                padding: 3px 10px;
+                font-size: 13px;
+                font-family: 'Segoe UI Variable Display', 'Segoe UI', -apple-system, sans-serif;
+                font-weight: 500;
+            }
         """)
 
 
-class ActionCard(QFrame):
+class LiquidGlassActionCard(QFrame):
     """
-    Human-in-the-loop Approval & Action Card.
-    Provides backward compatibility with update_card() while supporting
-    multi-step questions, choices, custom write-ins, and step progress.
+    Minimal, dark, glassmorphic floating action card matching VoiceOS liquid glass UI:
+    - Translucent near-black backdrop: rgba(20, 20, 24, 0.88)
+    - 1px subtle light stroke: rgba(255, 255, 255, 0.10)
+    - 18px rounded corners with diffuse blue outer glow
+    - Form-style label + value preview rows
+    - Saturated #0A6CFF pill primary action button
     """
     confirmed = Signal()
     cancelled = Signal()
-    answer_submitted = Signal(dict)
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setObjectName("ActionCard")
+        self.setObjectName("LiquidGlassActionCard")
+        self.setFixedWidth(360)
+
+        # Deep liquid glass styling
         self.setStyleSheet("""
-            QFrame#ActionCard {
-                background: rgba(18, 20, 26, 0.96);
-                border: 1px solid rgba(255, 255, 255, 0.12);
-                border-top: 1.5px solid rgba(255, 255, 255, 0.25);
+            QFrame#LiquidGlassActionCard {
+                background: rgba(20, 20, 24, 0.90);
+                border: 1px solid rgba(255, 255, 255, 0.10);
+                border-top: 1px solid rgba(255, 255, 255, 0.16);
                 border-radius: 18px;
             }
         """)
 
-        self._questions: List[Dict] = []
-        self._current_index = 0
-        self._answers: Dict[int, List[int]] = {}
-        self._custom_text: Dict[int, str] = {}
-        self._option_buttons: List[OptionRow] = []
+        # Soft blue-tinted floating glow (diffuse, not harsh)
+        glow = QGraphicsDropShadowEffect(self)
+        glow.setBlurRadius(42)
+        glow.setColor(QColor(10, 108, 255, 65))
+        glow.setOffset(0, 8)
+        self.setGraphicsEffect(glow)
 
         self._init_ui()
 
     def _init_ui(self):
-        self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(14, 12, 14, 12)
-        self.layout.setSpacing(10)
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(22, 20, 22, 20)
+        self.main_layout.setSpacing(14)
 
-        # ── Header: Icon + Title/Question + Dismiss ──
-        header_row = QHBoxLayout()
-        header_row.setSpacing(8)
+        # 1. Header Row (App context indicator)
+        self.header_row = QHBoxLayout()
+        self.header_row.setSpacing(10)
+        self.header_row.setAlignment(Qt.AlignVCenter)
 
-        self.icon_label = QLabel("⚡")
-        self.icon_label.setStyleSheet("font-size: 15px; color: #38bdf8;")
+        self.icon_label = QLabel("✉️")
+        self.icon_label.setStyleSheet("font-size: 18px; background: transparent;")
+        self.header_row.addWidget(self.icon_label)
 
-        self.title_label = QLabel("Action Approval")
-        self.title_label.setWordWrap(True)
+        self.title_label = QLabel("New Message")
         self.title_label.setStyleSheet("""
-            font-size: 13.5px;
-            font-weight: 600;
-            color: #f8fafc;
-            font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif;
+            color: #ffffff;
+            font-size: 14.5px;
+            font-weight: 700;
+            font-family: 'Segoe UI Variable Display', 'Segoe UI', -apple-system, sans-serif;
+            background: transparent;
         """)
+        self.header_row.addWidget(self.title_label)
+        self.header_row.addStretch()
 
-        self.btn_dismiss = QPushButton("✕")
-        self.btn_dismiss.setCursor(Qt.PointingHandCursor)
-        self.btn_dismiss.setStyleSheet("""
-            QPushButton {
-                background: transparent;
-                color: #64748b;
-                border: none;
-                font-size: 12px;
-                padding: 2px 6px;
-            }
-            QPushButton:hover { color: #f8fafc; }
-        """)
-        self.btn_dismiss.clicked.connect(self.cancelled.emit)
+        self.main_layout.addLayout(self.header_row)
 
-        header_row.addWidget(self.icon_label)
-        header_row.addWidget(self.title_label, 1)
-        header_row.addWidget(self.btn_dismiss)
-        self.layout.addLayout(header_row)
+        # 1px Subtle divider below header
+        self.divider = QFrame()
+        self.divider.setFixedHeight(1)
+        self.divider.setStyleSheet("background: rgba(255, 255, 255, 0.09); border: none;")
+        self.main_layout.addWidget(self.divider)
 
-        # ── Details / Description Text ──
-        self.details_label = QLabel()
-        self.details_label.setWordWrap(True)
-        self.details_label.setStyleSheet("font-size: 12px; color: #94a3b8; padding-left: 2px;")
-        self.layout.addWidget(self.details_label)
+        # 2. Form Fields Container (Preview rows)
+        self.fields_container = QWidget()
+        self.fields_container.setStyleSheet("background: transparent;")
+        self.fields_layout = QVBoxLayout(self.fields_container)
+        self.fields_layout.setContentsMargins(0, 4, 0, 4)
+        self.fields_layout.setSpacing(10)
+        self.main_layout.addWidget(self.fields_container)
 
-        # ── Options Container ──
-        self.options_container = QWidget()
-        self.options_layout = QVBoxLayout(self.options_container)
-        self.options_layout.setContentsMargins(0, 0, 0, 0)
-        self.options_layout.setSpacing(6)
-        self.layout.addWidget(self.options_container)
+        # 3. Action Buttons Row (Cancel & Primary Accent Pill)
+        self.button_row = QHBoxLayout()
+        self.button_row.setContentsMargins(0, 6, 0, 0)
+        self.button_row.setSpacing(10)
+        self.button_row.addStretch()
 
-        # ── Custom Write-in Input ──
-        self.custom_input = QLineEdit()
-        self.custom_input.setPlaceholderText("Something else…")
-        self.custom_input.setStyleSheet("""
-            QLineEdit {
-                background: rgba(255, 255, 255, 0.04);
-                border: 1px solid rgba(255, 255, 255, 0.08);
-                border-radius: 8px;
-                color: #ffffff;
-                padding: 6px 10px;
-                font-size: 12px;
-            }
-            QLineEdit:focus {
-                border-color: rgba(255, 255, 255, 0.25);
-                background: rgba(255, 255, 255, 0.07);
-            }
-        """)
-        self.custom_input.returnPressed.connect(self._advance)
-        self.custom_input.textChanged.connect(self._on_custom_changed)
-        self.layout.addWidget(self.custom_input)
-        self.custom_input.hide()
-
-        # ── Status Banner (Sent confirmation) ──
-        self.sent_banner = QLabel("✓ Answers sent")
-        self.sent_banner.setStyleSheet("""
-            background: rgba(34, 197, 94, 0.15);
-            color: #4ade80;
-            border: 1px solid rgba(34, 197, 94, 0.25);
-            border-radius: 8px;
-            padding: 6px 12px;
-            font-size: 12px;
-            font-weight: 500;
-        """)
-        self.layout.addWidget(self.sent_banner)
-        self.sent_banner.hide()
-
-        # ── Footer: Step Navigation + Actions ──
-        self.footer = QWidget()
-        footer_layout = QHBoxLayout(self.footer)
-        footer_layout.setContentsMargins(0, 4, 0, 0)
-        footer_layout.setSpacing(8)
-
-        # Step nav (e.g. < 1 / 3 >)
-        self.nav_widget = QWidget()
-        nav_layout = QHBoxLayout(self.nav_widget)
-        nav_layout.setContentsMargins(0, 0, 0, 0)
-        nav_layout.setSpacing(4)
-
-        self.btn_prev = QPushButton("‹")
-        self.btn_prev.setCursor(Qt.PointingHandCursor)
-        self.btn_prev.setStyleSheet("background: transparent; color: #64748b; font-size: 14px; border: none; padding: 0 4px;")
-        self.btn_prev.clicked.connect(self._go_prev)
-
-        self.step_label = QLabel("1 / 1")
-        self.step_label.setStyleSheet("color: #64748b; font-size: 11.5px; font-weight: 600;")
-
-        self.btn_next = QPushButton("›")
-        self.btn_next.setCursor(Qt.PointingHandCursor)
-        self.btn_next.setStyleSheet("background: transparent; color: #64748b; font-size: 14px; border: none; padding: 0 4px;")
-        self.btn_next.clicked.connect(self._go_next)
-
-        nav_layout.addWidget(self.btn_prev)
-        nav_layout.addWidget(self.step_label)
-        nav_layout.addWidget(self.btn_next)
-        footer_layout.addWidget(self.nav_widget)
-
-        footer_layout.addStretch()
-
-        # Buttons: Skip & Continue
-        self.btn_skip = QPushButton("Skip")
-        self.btn_skip.setObjectName("CancelButton")
-        self.btn_skip.setCursor(Qt.PointingHandCursor)
-        self.btn_skip.setStyleSheet("""
+        self.cancel_btn = QPushButton("Cancel")
+        self.cancel_btn.setCursor(Qt.PointingHandCursor)
+        self.cancel_btn.setStyleSheet("""
             QPushButton {
                 background: rgba(255, 255, 255, 0.06);
-                color: #cbd5e1;
-                border: 1px solid rgba(255, 255, 255, 0.10);
-                border-radius: 8px;
-                padding: 6px 14px;
-                font-size: 12px;
+                color: #94a3b8;
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 14px;
+                padding: 6px 16px;
+                font-size: 12.5px;
                 font-weight: 500;
+                font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif;
             }
             QPushButton:hover {
                 background: rgba(255, 255, 255, 0.12);
                 color: #ffffff;
             }
         """)
-        self.btn_skip.clicked.connect(self._on_skip)
+        self.cancel_btn.clicked.connect(self._on_cancel)
+        self.button_row.addWidget(self.cancel_btn)
 
-        self.btn_continue = QPushButton("Confirm ⏎")
-        self.btn_continue.setObjectName("ConfirmButton")
-        self.btn_continue.setCursor(Qt.PointingHandCursor)
-        self.btn_continue.setStyleSheet("""
+        self.primary_btn = QPushButton("Send")
+        self.primary_btn.setCursor(Qt.PointingHandCursor)
+        self.primary_btn.setStyleSheet("""
             QPushButton {
-                background: #ffffff;
-                color: #0f172a;
+                background: #0A6CFF;
+                color: #ffffff;
                 border: none;
-                border-radius: 8px;
-                padding: 6px 16px;
-                font-size: 12px;
+                border-radius: 14px;
+                padding: 6px 20px;
+                font-size: 12.5px;
                 font-weight: 600;
+                font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif;
             }
             QPushButton:hover {
-                background: #f1f5f9;
+                background: #257CFF;
             }
-            QPushButton:disabled {
-                background: rgba(255, 255, 255, 0.20);
-                color: rgba(0, 0, 0, 0.40);
+            QPushButton:pressed {
+                background: #0056D2;
             }
         """)
-        self.btn_continue.clicked.connect(self._advance)
+        self.primary_btn.clicked.connect(self._on_confirm)
+        self.button_row.addWidget(self.primary_btn)
 
-        footer_layout.addWidget(self.btn_skip)
-        footer_layout.addWidget(self.btn_continue)
-        self.layout.addWidget(self.footer)
+        self.main_layout.addLayout(self.button_row)
+
+    def set_header(self, app_name: str, action_title: str):
+        """Sets the app context icon and bold title label."""
+        app_key = app_name.lower().strip()
+        icon = APP_ICONS.get(app_key, APP_ICONS.get("default", "⚡"))
+        self.icon_label.setText(icon)
+        self.title_label.setText(action_title)
+
+    def clear_fields(self):
+        """Removes all dynamic preview fields."""
+        while self.fields_layout.count():
+            child = self.fields_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+            elif child.layout():
+                while child.layout().count():
+                    c2 = child.layout().takeAt(0)
+                    if c2.widget():
+                        c2.widget().deleteLater()
+
+    def add_field(self, label: str, value: str, is_pill: bool = False):
+        """
+        Adds a preview row:
+        - label: muted gray label (e.g. 'To', 'Subject', 'Date')
+        - value: off-white value or pill chip
+        """
+        row = QHBoxLayout()
+        row.setSpacing(12)
+        row.setAlignment(Qt.AlignTop)
+
+        lbl = QLabel(label)
+        lbl.setFixedWidth(56)
+        lbl.setStyleSheet("""
+            color: rgba(255, 255, 255, 0.48);
+            font-size: 13px;
+            font-weight: 500;
+            font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif;
+            background: transparent;
+        """)
+        row.addWidget(lbl)
+
+        if is_pill:
+            val_pill = PillBadge(value)
+            row.addWidget(val_pill)
+            row.addStretch()
+        else:
+            val_lbl = QLabel(value)
+            val_lbl.setWordWrap(True)
+            val_lbl.setStyleSheet("""
+                color: rgba(255, 255, 255, 0.90);
+                font-size: 13.5px;
+                font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif;
+                line-height: 1.45;
+                background: transparent;
+            """)
+            row.addWidget(val_lbl, 1)
+
+        self.fields_layout.addLayout(row)
+
+    def configure_action(
+        self,
+        app_name: str,
+        action_title: str,
+        fields: List[Dict[str, Any]],
+        primary_label: str = "Send",
+        on_confirm: Optional[Callable[[], None]] = None,
+        on_cancel: Optional[Callable[[], None]] = None,
+    ):
+        """Configures the complete card dynamically in a single call."""
+        self.set_header(app_name, action_title)
+        self.clear_fields()
+
+        for f in fields:
+            self.add_field(
+                label=f.get("label", ""),
+                value=f.get("value", ""),
+                is_pill=f.get("is_pill", False),
+            )
+
+        self.primary_btn.setText(primary_label)
+        if on_confirm:
+            try:
+                self.confirmed.disconnect()
+            except Exception:
+                pass
+            self.confirmed.connect(on_confirm)
+
+        if on_cancel:
+            try:
+                self.cancelled.disconnect()
+            except Exception:
+                pass
+            self.cancelled.connect(on_cancel)
+
+        self.adjustSize()
 
     def update_card(self, title: str, details: str, icon: str = "⚡", requires_confirmation: bool = False):
-        """Standard action confirmation update (legacy support)."""
-        self.title_label.setText(title)
-        self.details_label.setText(details)
-        self.icon_label.setText(icon)
-        self.sent_banner.hide()
-        self.custom_input.hide()
-        self.nav_widget.hide()
-        self._clear_options()
-
-        if requires_confirmation:
-            self.footer.show()
-            self.btn_continue.setText("Confirm ⏎")
-            self.btn_skip.setText("Cancel")
+        """Compatibility method: parses details into form-style liquid glass preview rows."""
+        app_name = "default"
+        title_lower = (title or "").lower()
+        if "email" in title_lower or "mail" in title_lower or "gmail" in title_lower:
+            app_name = "gmail"
+            action_title = "New Message"
+        elif "calendar" in title_lower or "event" in title_lower:
+            app_name = "calendar"
+            action_title = "New Event"
+        elif "whatsapp" in title_lower or "slack" in title_lower or "telegram" in title_lower or "message" in title_lower:
+            app_name = "slack"
+            action_title = "Send Message"
+        elif "task" in title_lower or "todo" in title_lower or "reminder" in title_lower:
+            app_name = "reminder"
+            action_title = "Set Reminder"
+        elif "spotify" in title_lower or "music" in title_lower:
+            app_name = "spotify"
+            action_title = "Play Music"
+        elif "youtube" in title_lower:
+            app_name = "youtube"
+            action_title = "Play Video"
         else:
-            self.footer.hide()
+            action_title = title or "Action Preview"
 
-    def set_questions(self, questions: List[Dict]):
-        """Sets up a multi-step human-in-the-loop approval questionnaire."""
-        self._questions = questions
-        self._current_index = 0
-        self._answers = {}
-        self._custom_text = {}
-        self.sent_banner.hide()
-        self.footer.show()
-        self._render_current_question()
-
-    def _render_current_question(self):
-        if not self._questions:
-            return
-
-        q = self._questions[self._current_index]
-        self.title_label.setText(q.get("q", "Select an option:"))
-        self.details_label.setText(q.get("sub", ""))
-        self.icon_label.setText(q.get("icon", "❓"))
-
-        # Step nav
-        self.nav_widget.show()
-        self.step_label.setText(f"{self._current_index + 1} / {len(self._questions)}")
-        self.btn_prev.setEnabled(self._current_index > 0)
-        self.btn_next.setEnabled(self._current_index < len(self._questions) - 1)
-
-        is_last = self._current_index == len(self._questions) - 1
-        self.btn_continue.setText("Send ⏎" if is_last else "Continue ⏎")
-        self.btn_skip.setText("Skip")
-
-        # Options
-        self._clear_options()
-        opts = q.get("options", [])
-        q_type = q.get("type", "radio")
-        is_radio = q_type == "radio"
-        picked = self._answers.get(self._current_index, [])
-
-        for i, opt in enumerate(opts):
-            btn = OptionRow(opt, is_radio=is_radio)
-            btn.set_selected(i in picked)
-            btn.clicked.connect(lambda checked=False, idx=i: self._on_option_toggled(idx))
-            self.options_layout.addWidget(btn)
-            self._option_buttons.append(btn)
-
-        # Custom text
-        self.custom_input.setText(self._custom_text.get(self._current_index, ""))
-        self.custom_input.show()
-
-        self._update_continue_enabled()
-
-    def _on_option_toggled(self, idx: int):
-        q = self._questions[self._current_index]
-        is_radio = q.get("type", "radio") == "radio"
-
-        if is_radio:
-            self._answers[self._current_index] = [idx]
-            for i, btn in enumerate(self._option_buttons):
-                btn.set_selected(i == idx)
-            # Auto-advance for single-choice radio after 350ms
-            QTimer.singleShot(350, self._advance)
-        else:
-            picked = self._answers.get(self._current_index, [])
-            if idx in picked:
-                picked.remove(idx)
+        fields = []
+        lines = [line.strip() for line in (details or "").split("\n") if line.strip()]
+        for line in lines:
+            if ":" in line:
+                k, v = line.split(":", 1)
+                is_pill = k.strip().lower() in ["to", "contact", "recipient", "date", "time", "due"]
+                fields.append({"label": k.strip(), "value": v.strip(), "is_pill": is_pill})
             else:
-                picked.append(idx)
-            self._answers[self._current_index] = picked
-            for i, btn in enumerate(self._option_buttons):
-                btn.set_selected(i in picked)
+                fields.append({"label": "Details", "value": line, "is_pill": False})
 
-        self._update_continue_enabled()
+        if not fields:
+            fields.append({"label": "Details", "value": details or title, "is_pill": False})
 
-    def _on_custom_changed(self, text: str):
-        self._custom_text[self._current_index] = text
-        self._update_continue_enabled()
+        primary_lbl = "Send" if app_name in ["gmail", "slack"] else ("Confirm ⏎" if requires_confirmation else "Open")
+        self.configure_action(
+            app_name=app_name,
+            action_title=action_title,
+            fields=fields,
+            primary_label=primary_lbl,
+        )
 
-    def _update_continue_enabled(self):
-        has_choice = bool(self._answers.get(self._current_index)) or bool(self._custom_text.get(self._current_index, "").strip())
-        self.btn_continue.setEnabled(has_choice)
-
-    def _go_prev(self):
-        if self._current_index > 0:
-            self._current_index -= 1
-            self._render_current_question()
-
-    def _go_next(self):
-        if self._current_index < len(self._questions) - 1:
-            self._current_index += 1
-            self._render_current_question()
-
-    def _on_skip(self):
-        if self._current_index < len(self._questions) - 1:
-            self._go_next()
-        else:
-            self.cancelled.emit()
-
-    def _advance(self):
-        if not self._questions:
-            self.confirmed.emit()
-            return
-
-        is_last = self._current_index == len(self._questions) - 1
-        if is_last:
-            self._finish_questions()
-        else:
-            self._go_next()
-
-    def _finish_questions(self):
-        self.sent_banner.show()
-        self.footer.hide()
-        self.options_container.hide()
-        self.custom_input.hide()
+    def _on_confirm(self):
         self.confirmed.emit()
-        self.answer_submitted.emit({
-            "answers": self._answers,
-            "custom": self._custom_text,
-        })
 
-    def _clear_options(self):
-        while self.options_layout.count():
-            item = self.options_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-        self._option_buttons.clear()
+    def _on_cancel(self):
+        self.cancelled.emit()
+
+
+class FloatingActionOverlay(QWidget):
+    """
+    Standalone borderless floating window that positions the LiquidGlassActionCard
+    smoothly near the user's cursor position.
+    """
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowFlags(
+            Qt.WindowStaysOnTopHint
+            | Qt.FramelessWindowHint
+            | Qt.Tool
+        )
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAttribute(Qt.WA_ShowWithoutActivating, True)
+
+        self.card = LiquidGlassActionCard(self)
+        self.card.confirmed.connect(self.hide)
+        self.card.cancelled.connect(self.hide)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.addWidget(self.card)
+
+    def show_near_cursor(self, cursor_pos: Optional[QPoint] = None):
+        """Positions the card offset slightly from the cursor within the active screen bounds."""
+        pos = cursor_pos or QCursor.pos()
+        screen = QApplication.screenAt(pos) or QApplication.primaryScreen()
+        geo = screen.availableGeometry()
+
+        self.adjustSize()
+        card_w = self.width()
+        card_h = self.height()
+
+        # Position slightly to the right and below the cursor
+        target_x = pos.x() + 24
+        target_y = pos.y() + 16
+
+        # Avoid clipping off right edge
+        if target_x + card_w > geo.right() - 20:
+            target_x = max(geo.left() + 20, pos.x() - card_w - 16)
+
+        # Avoid clipping off bottom edge
+        if target_y + card_h > geo.bottom() - 20:
+            target_y = max(geo.top() + 20, pos.y() - card_h - 16)
+
+        self.move(target_x, target_y)
+        self.show()
+        self.raise_()
+
+
+# Alias for backward compatibility
+ActionCard = LiquidGlassActionCard

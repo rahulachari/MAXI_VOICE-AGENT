@@ -3,6 +3,8 @@ JARVIS AI Query Tool
 Answers informational questions without executing desktop automation actions.
 """
 
+import json
+import urllib.request
 from .base import BaseTool, ToolResult
 from jarvis.app.config import config
 
@@ -23,30 +25,58 @@ class AIQueryTool(BaseTool):
         if not query:
             return ToolResult(status="FAILED", message="No query provided.")
 
-        groq_key = config.get("groq_api_key")
-        if groq_key:
-            try:
-                from groq import Groq
-                client = Groq(api_key=groq_key)
-                resp = client.chat.completions.create(
-                    model=config.get("ai_model", "openai/gpt-oss-120b"),
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": (
-                                "You are JARVIS VoiceOS, an intelligent AI companion. "
-                                "Answer the user concisely in 1 to 2 spoken sentences. Be direct, conversational, and articulate. "
-                                "Never include markdown symbols, bullets, asterisks, code blocks, or software version numbers."
-                            ),
-                        },
-                        {"role": "user", "content": query},
-                    ],
-                    max_tokens=300,
-                    temperature=0.3,
-                )
-                answer = clean_spoken_text(resp.choices[0].message.content or "")
-                return ToolResult(status="SUCCESS", message=answer, data={"query": query, "answer": answer})
-            except Exception as e:
-                return ToolResult(status="FAILED", message=f"AI service error: {e}", error=str(e))
+        gemini_key = config.get("gemini_api_key")
+        if gemini_key:
+            from jarvis.utils.text_cleaner import clean_spoken_text, clean_for_plain_text
 
-        return ToolResult(status="SUCCESS", message=f"I heard your question about '{query}'. Please configure your AI key for cloud reasoning.")
+            models = ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.7-flash"]
+            payload = {
+                "contents": [{"parts": [{"text": query}]}],
+                "systemInstruction": {
+                    "parts": [{
+                        "text": (
+                            "You are JARVIS, an articulate personal AI voice operating system assistant. "
+                            "Answer the user concisely in 2 to 3 natural spoken sentences. "
+                            "NEVER include markdown symbols, bullets, asterisks, hashtags, or code blocks. "
+                            "Speak with human warmth, fluency, and direct clarity."
+                        )
+                    }]
+                },
+                "generationConfig": {"maxOutputTokens": 300, "temperature": 0.4},
+            }
+            data_bytes = json.dumps(payload).encode("utf-8")
+
+            for model in models:
+                try:
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={gemini_key}"
+                    req = urllib.request.Request(
+                        url,
+                        data=data_bytes,
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    with urllib.request.urlopen(req, timeout=8) as resp:
+                        data = json.loads(resp.read().decode("utf-8"))
+                    answer_text = data["candidates"][0]["content"]["parts"][0]["text"]
+                    clean_spoken = clean_spoken_text(answer_text)
+                    clean_plain = clean_for_plain_text(answer_text, target="plain")
+                    return ToolResult(
+                        status="SUCCESS",
+                        message=clean_spoken,
+                        data={"query": query, "answer": clean_plain, "full_details": clean_plain},
+                    )
+                except Exception as e:
+                    err_str = str(e)
+                    if "429" in err_str:
+                        continue
+                    print(f"[AIQueryTool] Model {model} failed: {e}")
+
+            # If all cloud models rate-limited (429)
+            return ToolResult(
+                status="SUCCESS",
+                message=f"Regarding {query}, your cloud AI quota is momentarily rate-limited. Please allow a moment before asking another complex query.",
+                data={"query": query, "error": "rate_limited"},
+            )
+
+        return ToolResult(status="SUCCESS", message=f"I heard your question about '{query}'. Please configure your Gemini API key for cloud reasoning.")
+

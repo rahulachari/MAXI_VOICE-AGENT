@@ -111,25 +111,58 @@ class FilesystemTool(BaseTool):
             return ToolResult(status="FAILED", message=f"Failed to open file: {e}", error=str(e))
 
     def open_folder(self, folder: str) -> ToolResult:
+        clean_name = folder.lower().strip()
+
+        # Well-known system folders
         folder_map = {
             "downloads": Path.home() / "Downloads",
             "documents": Path.home() / "Documents",
             "pictures": Path.home() / "Pictures",
             "screenshots": Path.home() / "Pictures" / "Screenshots",
             "videos": Path.home() / "Videos",
+            "movies": Path.home() / "Videos",
             "music": Path.home() / "Music",
             "desktop": Path.home() / "Desktop",
+            "home": Path.home(),
+            "appdata": Path.home() / "AppData",
+            "onedrive": Path.home() / "OneDrive",
+            "3d objects": Path.home() / "3D Objects",
         }
-        
-        target = folder_map.get(folder.lower())
+
+        target = folder_map.get(clean_name)
+
+        # If not in the map, search common directories for a matching folder
         if not target:
-            return ToolResult(status="FAILED", message=f"I don't know how to open the {folder} folder directly.")
-            
+            search_dirs = [
+                Path.home() / "Desktop",
+                Path.home() / "Documents",
+                Path.home() / "Downloads",
+                Path.home() / "Videos",
+                Path.home() / "Pictures",
+                Path.home() / "Music",
+                Path.home(),
+            ]
+            for search_root in search_dirs:
+                if not search_root.exists():
+                    continue
+                try:
+                    for child in search_root.iterdir():
+                        if child.is_dir() and child.name.lower() == clean_name:
+                            target = child
+                            break
+                except Exception:
+                    pass
+                if target:
+                    break
+
+        if not target:
+            return ToolResult(status="FAILED", message=f"I couldn't find a folder named '{folder}' on your system.")
+
         try:
             if not target.exists():
                 target.mkdir(parents=True, exist_ok=True)
             os.startfile(str(target))
-            return ToolResult(status="SUCCESS", message=f"Opened your {folder.capitalize()}.", data={"folder": str(target)})
+            return ToolResult(status="SUCCESS", message=f"Opened your {folder.capitalize()} folder.", data={"folder": str(target)})
         except Exception as e:
             return ToolResult(status="FAILED", message=f"Failed to open folder: {e}", error=str(e))
 

@@ -140,8 +140,9 @@ class WindowsTool(BaseTool):
         target_cmd = None
         clean_name = app_name.lower().strip()
 
+        # Check alias dictionary
         for key, aliases in APP_ALIASES.items():
-            if clean_name in key or any(clean_name in a for a in aliases):
+            if clean_name == key or clean_name in key or any(clean_name == a or clean_name in a for a in aliases):
                 target_cmd = aliases[0]
                 break
 
@@ -150,31 +151,34 @@ class WindowsTool(BaseTool):
 
         try:
             if target_cmd.startswith("ms-") or target_cmd.startswith("start ") or ":" in target_cmd:
-                # Protocol URI (ms-settings:, start whatsapp:, etc.)
                 cmd = target_cmd if target_cmd.startswith("start ") else f"start {target_cmd}"
-                os.system(cmd)
+                subprocess.Popen(cmd, shell=True)
             else:
-                subprocess.Popen(target_cmd, shell=True)
+                # Try launching via start command so Windows shell resolves path or registered app
+                subprocess.Popen(f'start "" "{target_cmd}"', shell=True)
 
-            # Verification: Wait up to 3s and check if window exists
-            verified = False
-            for _ in range(6):  # 6 * 0.5s = 3 seconds
-                time.sleep(0.5)
-                if self._verify_app_running(clean_name):
-                    verified = True
-                    break
-
-            if verified:
-                return ToolResult(status="SUCCESS", message=f"Opened {app_name.capitalize()}.", data={"app": app_name})
-            else:
-                return ToolResult(
-                    status="FAILED", 
-                    message=f"I tried to open {app_name.capitalize()}, but I couldn't verify it started. It may not be installed.", 
-                    data={"app": app_name}
-                )
-
+            display_name = app_name.strip().title()
+            return ToolResult(
+                status="SUCCESS",
+                message=f"Opening {display_name} for you.",
+                data={"app": app_name, "full_details": f"🚀 Launching application: {display_name}"},
+            )
         except Exception as e:
-            return ToolResult(status="FAILED", message=f"I couldn't open {app_name}. It may not be installed on this computer.", error=str(e))
+            # Fallback to direct subprocess
+            try:
+                subprocess.Popen(target_cmd, shell=True)
+                display_name = app_name.strip().title()
+                return ToolResult(
+                    status="SUCCESS",
+                    message=f"Opening {display_name}.",
+                    data={"app": app_name, "full_details": f"🚀 Launching application: {display_name}"},
+                )
+            except Exception as e2:
+                return ToolResult(
+                    status="FAILED",
+                    message=f"I couldn't launch {app_name}. Please verify that it is installed.",
+                    error=str(e2),
+                )
 
     def close_app(self, app_name: str) -> ToolResult:
         hwnd = self._find_window_by_title_or_process(app_name)

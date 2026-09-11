@@ -93,20 +93,22 @@ class TaskTool(BaseTool):
         if not rows:
             return ToolResult(status="SUCCESS", message="You don't have any pending tasks. Nice work!")
 
-        items = []
-        for row in rows:
-            status_icon = "✅" if row["status"] == "completed" else "⬜"
-            due_info = ""
-            if row["due_at"]:
-                due_info = f" (due {row['due_at'][:10]})"
-            items.append(f"{status_icon} {row['title']}{due_info}")
-
-        count = len(items)
+        task_titles = [row["title"] for row in rows]
+        count = len(task_titles)
         label = "task" if count == 1 else "tasks"
+
+        if count == 1:
+            spoken_summary = f"You have 1 pending task: {task_titles[0]}."
+        elif count <= 3:
+            spoken_summary = f"You have {count} pending tasks: " + ", ".join(task_titles) + "."
+        else:
+            spoken_summary = f"You have {count} pending tasks, including {task_titles[0]}, and {task_titles[1]}."
+
+        details = "\n".join([f"- {t}" for t in task_titles])
         return ToolResult(
             status="SUCCESS",
-            message=f"You have {count} {label}:\n" + "\n".join(items),
-            data={"count": count},
+            message=spoken_summary,
+            data={"count": count, "tasks": task_titles, "full_details": details},
         )
 
     def complete_task(self, query: str) -> ToolResult:

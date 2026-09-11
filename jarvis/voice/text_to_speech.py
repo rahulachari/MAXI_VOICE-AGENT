@@ -22,48 +22,35 @@ try:
 except Exception as e:
     print(f"[TTS] Pygame mixer init: {e}")
 
-# Smart, clear UK female voice — elegant and articulate
-DEFAULT_NEURAL_VOICE = "en-GB-SoniaNeural"
+# Definitive intelligent personal assistant voice (articulate, natural, confident)
+DEFAULT_NEURAL_VOICE = "en-US-BrianNeural"
 
-# Available female neural voices (user can switch in settings)
+# Available neural voices
 AVAILABLE_VOICES = {
-    "Aria (US, Professional)": "en-US-AriaNeural",
-    "Jenny (US, Friendly)": "en-US-JennyNeural",
-    "Michelle (US, Warm)": "en-US-MichelleNeural",
-    "Sonia (UK, Elegant)": "en-GB-SoniaNeural",
-    "Libby (UK, Clear)": "en-GB-LibbyNeural",
-    "Natasha (AU, Smart)": "en-AU-NatashaNeural",
-    "Brian (US, Male)": "en-US-BrianNeural",
+    "Brian (JARVIS Agent, Articulate)": "en-US-BrianNeural",
+    "Guy (US, Natural Male)": "en-US-GuyNeural",
+    "Christopher (US, Deep Male)": "en-US-ChristopherNeural",
+    "Sonia (UK, Elegant Female)": "en-GB-SoniaNeural",
+    "Aria (US, Professional Female)": "en-US-AriaNeural",
+    "Jenny (US, Friendly Female)": "en-US-JennyNeural",
+}
+
+VOICE_MAP = {
+    "brian": "en-US-BrianNeural",
+    "jarvis": "en-US-BrianNeural",
+    "lyra": "en-US-BrianNeural",
+    "guy": "en-US-GuyNeural",
+    "christopher": "en-US-ChristopherNeural",
+    "sonia": "en-GB-SoniaNeural",
+    "aria": "en-US-AriaNeural",
+    "jenny": "en-US-JennyNeural",
 }
 
 
 def clean_spoken_text(text: str) -> str:
     """Cleans text to make it natural and conversational for spoken output."""
-    if not text:
-        return ""
-
-    import re
-    # If text is raw JSON, extract spoken_response or message
-    if text.strip().startswith("{") and text.strip().endswith("}"):
-        try:
-            import json
-            data = json.loads(text)
-            text = data.get("spoken_response") or data.get("message") or data.get("answer") or ""
-        except Exception:
-            m = re.search(r'"spoken_response":\s*"([^"]+)"', text)
-            if m:
-                text = m.group(1)
-            else:
-                text = re.sub(r'[\{\}\[\]"\'\\]', '', text)
-                text = re.sub(r'(category|action|target|params):', '', text)
-
-    # Strip code blocks and markdown symbols
-    text = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
-    text = re.sub(r'`([^`]+)`', r'\1', text)
-    text = re.sub(r'[*_#~>|]', '', text)
-    text = re.sub(r'https?://\S+', 'link', text)
-    text = re.sub(r'\s+', ' ', text).strip()
-    return text
+    from jarvis.utils.text_cleaner import clean_spoken_text as _clean
+    return _clean(text)
 
 
 class TextToSpeechEngine:
@@ -72,7 +59,13 @@ class TextToSpeechEngine:
         self._lock = threading.Lock()
         self._is_speaking = False
         self._current_thread: Optional[threading.Thread] = None
-        self._voice = config.get("voice_name") or DEFAULT_NEURAL_VOICE
+
+        raw_v = str(config.get("voice_name", "Brian")).strip().lower()
+        if "neural" in raw_v:
+            self._voice = config.get("voice_name")
+        else:
+            self._voice = VOICE_MAP.get(raw_v, DEFAULT_NEURAL_VOICE)
+
         self._sapi5_engine = None
 
     def is_speaking(self) -> bool:
@@ -103,9 +96,8 @@ class TextToSpeechEngine:
 
         def _worker():
             with self._lock:
-                # Force an extra stop just in case
                 try:
-                    if pygame.mixer.get_init() and pygame.mixer.music.get_busy():
+                    if pygame.mixer.get_init():
                         pygame.mixer.music.stop()
                         pygame.mixer.music.unload()
                 except Exception:
@@ -113,23 +105,16 @@ class TextToSpeechEngine:
 
                 self._stop_event.clear()
                 self._is_speaking = True
-                
+
                 success = False
-                # 1. Try Google Gemini Lyra voice first
-                if config.get("gemini_api_key"):
-                    try:
-                        success = self._speak_gemini_lyra(clean_text)
-                    except Exception as e:
-                        print(f"[TTS] Gemini Lyra TTS failed, falling back to neural: {e}")
 
-                # 2. Fallback to high-definition edge neural voice
-                if not success and not self._stop_event.is_set():
-                    try:
-                        success = self._speak_neural(clean_text)
-                    except Exception as e:
-                        print(f"[TTS] Neural TTS failed, falling back to SAPI5: {e}")
+                # 1. High-definition neural agent voice (fast, natural, articulate)
+                try:
+                    success = self._speak_neural(clean_text)
+                except Exception as e:
+                    print(f"[TTS] Neural TTS failed, trying fallback: {e}")
 
-                # 3. Fallback to offline SAPI5 if neural fails and stop was not requested
+                # 2. Fallback to offline SAPI5 only if neural voice is unavailable
                 if not success and not self._stop_event.is_set():
                     self._speak_sapi5(clean_text)
 

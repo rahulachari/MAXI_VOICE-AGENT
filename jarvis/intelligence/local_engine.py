@@ -46,11 +46,16 @@ class LocalSemanticEngine:
     @staticmethod
     def parse(transcript: str) -> Optional[Intent]:
         text = transcript.lower().strip()
+        # Clean mid-speech pauses/punctuation inserted by STT without destroying filenames or URLs
+        text = re.sub(r"[,?!]", " ", text)
+        text = re.sub(r"(?<!\w)\.|\.(?!\w)", " ", text)
+        text = re.sub(r"\s+", " ", text).strip()
         # Remove common politeness prefixes and wake words
         text = re.sub(r"^(jarvis|please|can you|could you|would you|hey jarvis|hi jarvis|ok jarvis)\s+", "", text).strip()
-        text = text.rstrip(".?!")
 
-        # 1. Cancellation / Stop
+        # ===================================================================
+        # 1. System Control
+        # ===================================================================
         if text in ["stop", "cancel", "abort", "never mind", "quit", "pause", "shut up", "be quiet", "enough"]:
             return Intent(category=IntentCategory.CANCEL, action="cancel")
 
@@ -71,43 +76,41 @@ class LocalSemanticEngine:
                 confirmation_prompt="I am JARVIS, your desktop voice operating system assistant. I can open apps, search the web, send messages, write emails, control your system, and much more.",
             )
 
-        # 3. System Time & Date (instant response with human phrasing)
-        if re.search(r"\b(?:what(?:'s|\s+is)\s+the\s+time|tell\s+me\s+the\s+time|what\s+time\s+is\s+it|time\s+now|current\s+time)\b", text):
-            current_time = datetime.now().strftime("%I:%M %p").lstrip("0")
-            current_date = datetime.now().strftime("%A, %B %d")
+        # 3. System Time & Date
+        if re.search(r"(?:what(?:'s|\s+is)\s+the\s+time|tell\s+me\s+the\s+time|what\s+time\s+is\s+it|time\s+now|current\s+time)", text):
             return Intent(
-                category=IntentCategory.AI_QUERY,
-                action="query",
-                params={
-                    "query": transcript,
-                    "full_details": f"The time is {current_time}.\nToday is {current_date}.",
-                },
-                confirmation_prompt=f"It's {current_time} right now.",
+                category=IntentCategory.TIME,
+                action="get_time",
+                params={},
             )
 
-        if re.search(r"\b(?:what\s+(?:is\s+)?(?:today'?s\s+)?date|what\s+day\s+is\s+it|today'?s\s+date|what\s+is\s+the\s+date)\b", text):
-            current_date = datetime.now().strftime("%A, %B %d, %Y")
+        if re.search(r"(?:what\s+(?:is\s+)?(?:today'?s\s+)?date|what\s+day\s+is\s+it|today'?s\s+date|what\s+is\s+the\s+date)", text):
             return Intent(
-                category=IntentCategory.AI_QUERY,
-                action="query",
-                params={
-                    "query": transcript,
-                    "full_details": f"Today is {current_date}.",
-                },
-                confirmation_prompt=f"Today is {current_date}.",
+                category=IntentCategory.TIME,
+                action="get_date",
+                params={},
             )
 
         # ===================================================================
-        # 4. WhatsApp Messaging (Desktop App + Web)
+        # 4. WhatsApp & Communication Messaging
         # ===================================================================
 
-        # "send a whatsapp message to [name]" or "whatsapp [name]"
-        wa_send_match = re.search(
-            r"(?:send\s+(?:a\s+)?(?:whatsapp|whats app)\s+(?:message\s+)?to\s+)(.+?)(?:\s+saying\s+(.+))?$", text
+        # Comprehensive messaging pattern:
+        # "send a message to Lokesh"
+        # "send a message to Jatin Mawa that I am coming today"
+        # "send an imessage to Lokesh saying I will be late"
+        # "send a whatsapp message to Lokesh that I am on my way"
+        # "message Lokesh that I am coming"
+        msg_match = re.search(
+            r"^(?:send\s+(?:an?\s+)?(?:whatsapp\s+|whats\s*app\s+|imessage\s+|i\s*message\s+|text\s+)?message\s+to\s+|send\s+(?:an?\s+)?(?:whatsapp|whats\s*app|imessage|i\s*message|text)\s+to\s+|(?:message|text|whatsapp)\s+)(.+?)(?:\s+(?:that|saying\s+that|saying|telling\s+(?:him|her|them)\s+(?:that\s+)?|about|:)\s+(.+))?$",
+            text,
+            re.IGNORECASE,
         )
-        if wa_send_match:
-            contact = wa_send_match.group(1).strip()
-            message_body = wa_send_match.group(2).strip() if wa_send_match.group(2) else ""
+        if msg_match:
+            contact = msg_match.group(1).strip()
+            # Clean out any trailing "on whatsapp" if present in contact name
+            contact = re.sub(r"\s+on\s+(?:whatsapp|whats\s*app|imessage)$", "", contact, flags=re.IGNORECASE).strip()
+            message_body = msg_match.group(2).strip() if msg_match.group(2) else ""
             return Intent(
                 category=IntentCategory.MESSAGING,
                 target="WhatsApp",
@@ -116,34 +119,90 @@ class LocalSemanticEngine:
             )
 
         # "message [name] on whatsapp" / "text [name] on whatsapp"
-        wa_msg_match = re.search(r"(?:message|text)\s+(.+?)\s+on\s+(?:whatsapp|whats app)", text)
+        wa_msg_match = re.search(r"(?:message|text)\s+(.+?)\s+on\s+(?:whatsapp|whats app)(?:\s+(?:that|saying|about)\s+(.+))?", text, re.IGNORECASE)
         if wa_msg_match:
             contact = wa_msg_match.group(1).strip()
+            message_body = wa_msg_match.group(2).strip() if wa_msg_match.group(2) else ""
             return Intent(
                 category=IntentCategory.MESSAGING,
                 target="WhatsApp",
                 action="send_whatsapp",
-                params={"contact": contact, "message": ""},
+                params={"contact": contact, "message": message_body},
             )
 
         # "open whatsapp" (Desktop app)
-        if re.search(r"\b(open|launch|start)\s+(?:whatsapp|whats app)\b", text):
+        if re.search(r"\b(open|launch|start)\s+(?:whatsapp|whats app)\b", text, re.IGNORECASE):
             return Intent(category=IntentCategory.APP_LAUNCH, target="WhatsApp", action="launch_app", params={"app_name": "whatsapp"})
 
-        # "whatsapp [name]" shortcut
-        wa_shortcut = re.match(r"^(?:whatsapp|whats app)\s+(.+)$", text)
-        if wa_shortcut:
-            contact = wa_shortcut.group(1).strip()
+        # ===================================================================
+        # 4.5. Folder Access & Browsing (In-Notch File View)
+        # ===================================================================
+
+        # User alias registration: "call my Client Files folder projects"
+        alias_reg_match = re.search(r"\b(?:call|alias|name)\s+(?:my\s+)?(.+?)\s+folder\s+(.+)$", text, re.IGNORECASE)
+        if alias_reg_match:
+            folder_src = alias_reg_match.group(1).strip()
+            alias_dst = alias_reg_match.group(2).strip()
             return Intent(
-                category=IntentCategory.MESSAGING,
-                target="WhatsApp",
-                action="send_whatsapp",
-                params={"contact": contact, "message": ""},
+                category=IntentCategory.FOLDER_BROWSE,
+                action="set_alias",
+                params={"folder": folder_src, "alias": alias_dst},
+            )
+
+        # "what's in [folder] / what is in my [folder]"
+        whats_in_match = re.search(r"\b(?:what'?s\s+(?:in|on)|what\s+is\s+(?:in|on)|show\s+me\s+what'?s\s+in)\s+(?:my\s+)?([a-zA-Z0-9\s]+?)(?:\s+folder)?$", text, re.IGNORECASE)
+        if whats_in_match:
+            target_f = whats_in_match.group(1).strip()
+            if target_f in ["screen", "my screen", "the screen"]:
+                pass  # goes to screen analysis
+            else:
+                return Intent(category=IntentCategory.FOLDER_BROWSE, action="browse_folder", params={"folder": target_f})
+
+        # "open [folder] folder" / "show [folder] folder" / "browse [folder] folder"
+        folder_named_match = re.search(r"\b(?:open|show|browse|view|display)\s+(?:my\s+)?([a-zA-Z0-9\s]+?)\s+folder\b", text, re.IGNORECASE)
+        if folder_named_match:
+            folder_target = folder_named_match.group(1).strip()
+            return Intent(category=IntentCategory.FOLDER_BROWSE, action="browse_folder", params={"folder": folder_target})
+
+        # Well-known folder direct shortcuts: "open downloads", "show screenshots", "open my desktop"
+        well_known_match = re.search(r"\b(?:open|show|browse|view)\s+(?:my\s+)?(downloads?|screenshots?|desktop|documents?|pictures?|videos?|music)\b", text, re.IGNORECASE)
+        if well_known_match:
+            folder_target = well_known_match.group(1).strip()
+            return Intent(category=IntentCategory.FOLDER_BROWSE, action="browse_folder", params={"folder": folder_target})
+
+        # ===================================================================
+        # 4.7. Prompt Generation & Engineering
+        # ===================================================================
+
+        # "give me a prompt for tagged box" / "generate a prompt for health app" / "prompt for tagged box"
+        prompt_match = re.search(
+            r"^(?:(?:can\s+you\s+|please\s+)?(?:give\s+(?:me\s+)?(?:a\s+)?|generate\s+(?:a\s+)?|create\s+(?:a\s+)?|write\s+(?:a\s+)?|make\s+(?:a\s+)?|build\s+(?:a\s+)?)(?:polished\s+|good\s+|system\s+)?prompt\s+(?:for|about|to|on)\s+|prompt\s+(?:for|about|on)\s+)(.+)$",
+            text,
+            re.IGNORECASE,
+        )
+        if prompt_match:
+            topic = prompt_match.group(1).strip()
+            topic = re.sub(r"[?.!]+$", "", topic).strip()
+            return Intent(
+                category=IntentCategory.PROMPT_GEN,
+                target="PromptGenerator",
+                action="generate_prompt",
+                params={"topic": topic},
             )
 
         # ===================================================================
         # 5. Email
         # ===================================================================
+
+        # Read / Check Gmails or Inbox
+        # "read my gmails", "check my emails", "read emails", "read gmail", "check my inbox", "show my emails"
+        if re.search(r"\b(?:read|check|show|fetch|get)\s+(?:my\s+)?(?:unread\s+)?(?:gmails?|emails?|mails?|inbox)\b", text, re.IGNORECASE):
+            return Intent(
+                category=IntentCategory.EMAIL,
+                target="Gmail",
+                action="read_emails",
+                params={},
+            )
 
         # "send an email to [person] about [subject]" / "email [person] saying [body]"
         email_match = re.search(
@@ -159,8 +218,8 @@ class LocalSemanticEngine:
                 params={"recipient": recipient, "subject": subject},
             )
 
-        # "compose email" / "new email" / "write an email"
-        if re.search(r"\b(compose|write|draft|new)\s+(?:an?\s+)?(?:email|mail)\b", text):
+        # "compose email" / "new email" / "write an email" / "send an email"
+        if re.search(r"\b(send|compose|write|draft|new)\s+(?:an?\s+)?(?:email|mail)\b", text):
             return Intent(
                 category=IntentCategory.EMAIL,
                 target="Gmail",
@@ -168,8 +227,8 @@ class LocalSemanticEngine:
                 params={"recipient": "", "subject": ""},
             )
 
-        # "check my email" / "open email" / "open gmail"
-        if re.search(r"\b(check|open|read)\s+(?:my\s+)?(?:email|emails|mail|inbox|gmail)\b", text):
+        # "open email" / "open gmail" (Explicit webmail navigation)
+        if re.search(r"\b(?:open|launch)\s+(?:my\s+)?(?:email|emails|mail|inbox|gmail)\b", text, re.IGNORECASE):
             return Intent(
                 category=IntentCategory.WEB_NAVIGATION,
                 target="Gmail",
@@ -290,15 +349,22 @@ class LocalSemanticEngine:
         if text in ["previous", "previous song", "previous track", "go back", "last song"]:
             return Intent(category=IntentCategory.MEDIA_CONTROL, action="previous_track")
 
-        # "play [song] on youtube/spotify"
-        play_match = re.search(r"play\s+(.+?)(?:\s+on\s+(youtube|spotify))?$", text)
+        # "play [song] on youtube/spotify" or "play [song]"
+        play_match = re.search(r"^play\s+(.+?)(?:\s+on\s+(youtube|spotify))?$", text)
         if play_match and text.startswith("play "):
             query = play_match.group(1).strip()
-            platform = play_match.group(2) or "youtube"
-            if platform == "youtube":
-                return Intent(category=IntentCategory.WEB_SEARCH, target="YouTube", action="search_youtube", params={"query": query})
-            elif platform == "spotify":
-                return Intent(category=IntentCategory.MUSIC, target="Spotify", action="play_spotify", params={"query": query})
+            platform = (play_match.group(2) or "").lower()
+
+            # If user explicitly specifies spotify or youtube
+            if platform == "spotify" or "spotify" in query.lower():
+                clean_q = re.sub(r"\b(on\s+spotify|in\s+spotify|spotify)\b", "", query, flags=re.IGNORECASE).strip()
+                return Intent(category=IntentCategory.MUSIC, target="Spotify", action="play_spotify", params={"query": clean_q or query})
+            elif platform == "youtube" or "youtube" in query.lower():
+                clean_q = re.sub(r"\b(on\s+youtube|in\s+youtube|youtube)\b", "", query, flags=re.IGNORECASE).strip()
+                return Intent(category=IntentCategory.MUSIC, target="YouTube", action="play_youtube", params={"query": clean_q or query})
+            else:
+                # Default music query to YouTube playback for direct audio/video streaming
+                return Intent(category=IntentCategory.MUSIC, target="YouTube", action="play_youtube", params={"query": query})
 
         # ===================================================================
         # 13. Window Controls (Minimize, Maximize, Close active)
@@ -422,8 +488,14 @@ class LocalSemanticEngine:
         if text in ["open task manager", "task manager", "launch task manager"]:
             return Intent(category=IntentCategory.KEYBOARD_SHORTCUT, action="hotkey", params={"keys": ["ctrl", "shift", "escape"]})
 
-        # Specific known folders
-        known_folder_match = re.search(r"open\s+(my\s+)?(downloads|documents|pictures|screenshots|videos|music|desktop)(\s+folder|\s+files)?$", text)
+        # Any "open X folder" pattern -> route to filesystem
+        folder_match = re.search(r"(?:open|show|launch)\s+(my\s+)?(.+?)(?:\s+folder|\s+directory|\s+files)$", text)
+        if folder_match:
+            folder_name = folder_match.group(2).strip()
+            return Intent(category=IntentCategory.FILE_OPEN, target="Filesystem", action="open_folder", params={"folder": folder_name})
+
+        # Known system folders by name alone
+        known_folder_match = re.search(r"open\s+(my\s+)?(downloads|documents|pictures|screenshots|videos|music|desktop|movies)$", text)
         if known_folder_match:
             folder_name = known_folder_match.group(2).strip()
             return Intent(category=IntentCategory.FILE_OPEN, target="Filesystem", action="open_folder", params={"folder": folder_name})
@@ -431,7 +503,10 @@ class LocalSemanticEngine:
         launch_match = re.search(r"^(open|launch|start|run)\s+([a-zA-Z0-9\s]+)$", text)
         if launch_match:
             app_raw = launch_match.group(2).strip()
-            if app_raw not in POPULAR_SITES:
+            # Skip calendar and cursor-linkedin commands here
+            if "calendar" in app_raw or "linkedin" in app_raw:
+                pass
+            elif app_raw not in POPULAR_SITES:
                 # Check if it's a file request
                 if "my " in app_raw or (app_raw.startswith("file") and app_raw != "files") or app_raw.endswith((".pdf", ".txt", ".docx", ".png")):
                     query = app_raw.replace("my ", "").replace("file", "").strip()
@@ -451,11 +526,31 @@ class LocalSemanticEngine:
                 return Intent(category=IntentCategory.APP_FOCUS, target=app_raw.title(), action="focus_app", params={"app_name": app_raw})
 
         # ===================================================================
-        # 19. File System
+        # 19. Screen & Cursor Vision (Point Anywhere on Screen)
+        # ===================================================================
+
+        # Point and ask: "find his LinkedIn", "open his LinkedIn", "find this person's LinkedIn"
+        if re.search(r"\b(?:find|open|show|get|search|look\s+up)\s+(?:his|her|their|this\s+person'?s?)\s+linkedin\b", text):
+            return Intent(
+                category=IntentCategory.CURSOR_ANALYSIS,
+                action="find_linkedin",
+                params={"prompt": "Extract the person or founder's name under or nearest to the cursor to find their LinkedIn profile."},
+            )
+
+        # Point and ask: "what is this", "who is this", "explain this", "what does this mean", "summarize this"
+        if re.search(r"\b(?:what\s+is\s+this|what'?s\s+this|who\s+is\s+this|what\s+does\s+this\s+(?:mean|do)|explain\s+this|describe\s+this|summarize\s+this|read\s+this|what\s+am\s+i\s+(?:looking|pointing)\s+at)\b", text):
+            return Intent(category=IntentCategory.CURSOR_ANALYSIS, action="analyze", params={"prompt": text})
+
+        # Full screen analysis: "what's on my screen", "explain this page"
+        if text in ["what is on my screen", "explain this page", "read this error", "what is on my screen?", "analyze screen", "read screen", "what's on my screen"]:
+            return Intent(category=IntentCategory.SCREEN_ANALYSIS, action="analyze", params={"prompt": text})
+
+        # ===================================================================
+        # 20. File System
         # ===================================================================
 
         find_match = re.search(r"^(find|search for|locate)\s+(my\s+)?([a-zA-Z0-9\s\.\-_]+)$", text)
-        if find_match and "youtube" not in text and "google" not in text:
+        if find_match and "youtube" not in text and "google" not in text and "linkedin" not in text:
             query = find_match.group(3).replace("file", "").strip()
             return Intent(category=IntentCategory.FILE_SEARCH, target="Filesystem", action="find_file", params={"query": query})
 
@@ -508,10 +603,10 @@ class LocalSemanticEngine:
         # ===================================================================
 
         if text in ["what is on my screen", "explain this page", "read this error", "what is on my screen?", "analyze screen", "read screen", "what's on my screen"]:
-            return Intent(category=IntentCategory.SCREEN_ANALYSIS, action="capture_screen", params={"prompt": text})
+            return Intent(category=IntentCategory.SCREEN_ANALYSIS, action="analyze", params={"prompt": text})
 
-        if text in ["what is this", "what does this do", "what is this?", "explain this button", "what am I looking at"]:
-            return Intent(category=IntentCategory.CURSOR_ANALYSIS, action="capture_cursor_region", params={"prompt": text})
+        if re.search(r"(?:what\s+is\s+this|what'?s\s+this|what\s+does\s+this\s+do|explain\s+this|describe\s+this|what\s+am\s+i\s+(?:looking|pointing)\s+at)", text):
+            return Intent(category=IntentCategory.CURSOR_ANALYSIS, action="analyze", params={"prompt": text})
 
         # ===================================================================
         # 22. VoiceOS Dictation: "dictate: ..." or "type ..."
@@ -537,16 +632,23 @@ class LocalSemanticEngine:
             time_match = re.search(r"\b(?:at|for)\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\b", text)
             event_time = time_match.group(1) if time_match else "9:00 AM"
 
+            # Extract event title by stripping all command prefixes
             title = text
-            title = re.sub(r"^(?:please\s+)?(?:open\s+calendar\s+and\s+)?", "", title)
-            title = re.sub(r"^(?:remind\s+me\s+|add\s+(?:an?\s+)?(?:event|reminder|task)\s+(?:to\s+)?|schedule\s+)?", "", title)
+            title = re.sub(r"^(?:please\s+)?(?:open\s+(?:my\s+)?calendar\s+and\s+)?", "", title)
+            title = re.sub(r"^(?:set\s+(?:a\s+)?(?:reminder|event|meeting)\s+(?:for\s+)?)", "", title)
+            title = re.sub(r"^(?:remind\s+me\s+(?:to\s+|about\s+|for\s+)?)", "", title)
+            title = re.sub(r"^(?:add\s+(?:an?\s+)?(?:event|reminder|task)\s+(?:to\s+|for\s+)?)", "", title)
+            title = re.sub(r"^(?:schedule\s+(?:a\s+)?)", "", title)
+            # Remove time reference from title
             if time_match:
                 title = re.sub(r"\b(?:at|for)\s+" + re.escape(time_match.group(1)) + r"\b", "", title)
-            title = re.sub(r"^(?:to\s+|that\s+|i\s+need\s+to\s+)", "", title).strip()
+            # Remove remaining prefixes like "I need to go for", "to", "that"
+            title = re.sub(r"^(?:to\s+|that\s+|i\s+need\s+to\s+(?:go\s+(?:for\s+)?)?)", "", title).strip()
+            title = re.sub(r"\s+", " ", title).strip()
             if not title:
                 title = "Reminder"
 
-            title_clean = title.capitalize()
+            title_clean = title.strip().capitalize()
             return Intent(
                 category=IntentCategory.CALENDAR,
                 action="create_event",
@@ -554,7 +656,6 @@ class LocalSemanticEngine:
                     "title": title_clean,
                     "time": event_time,
                     "date": "today",
-                    "full_details": f"Calendar Event: {title_clean}\nTime: {event_time}\nStatus: Scheduled & Opened in Calendar"
                 },
                 confirmation_prompt=f"I've opened your calendar and set a reminder for {title_clean} at {event_time}."
             )
@@ -646,11 +747,70 @@ class LocalSemanticEngine:
             return Intent(category=IntentCategory.MEMORY, action="recall_history", params={"timeframe": history_match.group(2).strip()})
 
         # ===================================================================
-        # 28. Weather (delegate to AI)
+        # 28. Calendar & Reminders
         # ===================================================================
 
-        if re.search(r"\b(weather|temperature|forecast)\b", text):
-            return None  # Falls through to AI provider for live data
+        # "open calendar and set a reminder for X at Y" - extract title properly
+        cal_reminder = re.search(
+            r"(?:set\s+(?:a\s+)?(?:reminder|event|meeting)|schedule|add\s+(?:a\s+)?(?:event|reminder|meeting))"
+            r"\s+(?:for\s+)?(.+?)(?:\s+(?:at|on|for)\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.|p\.m\.)?))?$",
+            text,
+        )
+        if cal_reminder:
+            title = cal_reminder.group(1).strip().rstrip(" at on for")
+            time_str = cal_reminder.group(2) or ""
+            return Intent(
+                category=IntentCategory.CALENDAR,
+                action="create_event",
+                params={"title": title.capitalize(), "time": time_str, "date": "today"},
+            )
+
+        # "open calendar" / "open my calendar"
+        if re.search(r"\b(?:open|show|launch)\s+(?:my\s+)?(?:calendar|google calendar)\b", text):
+            return Intent(category=IntentCategory.CALENDAR, action="open_calendar", params={})
+
+        # ===================================================================
+        # 29. Cursor / Screen Analysis (Point-and-Ask)
+        # ===================================================================
+
+        # "what is this" / "what am I looking at" / "what's this" / "explain this"
+        if re.search(r"(?:what\s+is\s+this|what'?s\s+this|what\s+am\s+i\s+(?:looking|pointing)\s+at|explain\s+this|describe\s+this|what\s+do\s+you\s+see)", text):
+            return Intent(
+                category=IntentCategory.CURSOR_ANALYSIS,
+                action="analyze",
+                params={"prompt": "Describe what the user is pointing at on their screen. What is this element?"},
+            )
+
+        # "what is on my screen" / "analyze my screen" / "read my screen"
+        if re.search(r"(?:what\s+is\s+on\s+(?:my\s+)?screen|analyze\s+(?:my\s+)?screen|read\s+(?:my\s+)?screen|what\s+do\s+you\s+see\s+on\s+(?:my\s+)?screen)", text):
+            return Intent(
+                category=IntentCategory.SCREEN_ANALYSIS,
+                action="analyze",
+                params={"prompt": "Describe what's visible on the user's screen in detail."},
+            )
+
+        # Cursor-context questions like "can you find his linkedin" / "who is this person"
+        if re.search(r"(?:find\s+(?:his|her|their)\s+|who\s+is\s+(?:this|that)\s*(?:person|guy|man|woman)?)", text):
+            prompt = text
+            return Intent(
+                category=IntentCategory.CURSOR_ANALYSIS,
+                action="analyze",
+                params={"prompt": f"The user is pointing at something on screen and asks: {prompt}"},
+            )
+
+        # ===================================================================
+        # 30. Weather & Temperature
+        # ===================================================================
+
+        if re.search(r"\b(weather|temperature|forecast|whether)\b", text):
+            loc_match = re.search(r"\b(?:in|for|at)\s+([a-zA-Z\s]+)$", text)
+            location = loc_match.group(1).strip() if loc_match else ""
+            return Intent(
+                category=IntentCategory.WEATHER,
+                action="get_weather",
+                params={"location": location},
+                confirmation_prompt="Checking the live weather for you, sir.",
+            )
 
         return None
 

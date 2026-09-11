@@ -13,6 +13,9 @@ from .media_tool import MediaTool
 from .memory_tool import MemoryTool
 from .calendar_tool import CalendarTool
 from .task_tool import TaskTool
+from .weather_tool import WeatherTool
+from .email_reader_tool import EmailReaderTool
+from .prompt_gen_tool import PromptGeneratorTool
 
 __all__ = [
     "BaseTool",
@@ -31,5 +34,8 @@ __all__ = [
     "MemoryTool",
     "CalendarTool",
     "TaskTool",
+    "WeatherTool",
+    "EmailReaderTool",
+    "PromptGeneratorTool",
 ]
 

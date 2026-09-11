@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JARVIS VoiceOS — Liquid Glass Action Card</title>
+  <style>
+    :root {
+      --accent-blue: #0A6CFF;
+      --accent-blue-hover: #257CFF;
+      --glass-bg: rgba(20, 20, 24, 0.88);
+      --glass-border: rgba(255, 255, 255, 0.10);
+      --glass-glow: 0 0 55px rgba(60, 120, 255, 0.28);
+      --text-main: rgba(255, 255, 255, 0.92);
+      --text-muted: rgba(255, 255, 255, 0.48);
+      --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: var(--font-family);
+    }
+
+    body {
+      min-height: 100vh;
+      background: #f1f3f6;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+    }
+
+    .demo-header {
+      margin-bottom: 24px;
+      text-align: center;
+    }
+
+    .demo-header h1 {
+      font-size: 24px;
+      font-weight: 700;
+      color: #111827;
+      margin-bottom: 6px;
+    }
+
+    .demo-header p {
+      font-size: 14px;
+      color: #64748b;
+    }
+
+    /* Outer Device Canvas Frame */
+    .device-canvas {
+      position: relative;
+      width: 920px;
+      height: 560px;
+      border-radius: 24px;
+      overflow: hidden;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.05);
+      display: flex;
+    }
+
+    /* Left Half: Deep Blue Gradient */
+    .canvas-left {
+      width: 50%;
+      height: 100%;
+      background: linear-gradient(135deg, #050b1a 0%, #0c234a 55%, #123d78 100%);
+      position: relative;
+    }
+
+    /* Right Half: Soft Photographic Sky and Clouds */
+    .canvas-right {
+      width: 50%;
+      height: 100%;
+      background: linear-gradient(180deg, #6ba5d8 0%, #9bc4e8 35%, #e1effa 75%, #fce7d8 100%);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .cloud-layer {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at 60% 40%, rgba(255, 255, 255, 0.5) 0%, transparent 60%),
+                  radial-gradient(circle at 30% 70%, rgba(255, 255, 255, 0.4) 0%, transparent 50%);
+    }
+
+    /* Floating Globe Indicator */
+    .floating-globe-indicator {
+      position: absolute;
+      top: 110px;
+      left: 270px;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.12);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: rgba(255, 255, 255, 0.9);
+      font-size: 15px;
+      box-shadow: 0 8px 18px rgba(0, 0, 0, 0.2);
+      z-index: 10;
+    }
+
+    /* Cursor Indicator */
+    .cursor-indicator {
+      position: absolute;
+      top: 148px;
+      left: 254px;
+      z-index: 25;
+      pointer-events: none;
+      filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.45));
+      animation: cursorFloat 4s ease-in-out infinite;
+    }
+
+    @keyframes cursorFloat {
+      0%, 100% { transform: translate(0, 0); }
+      50% { transform: translate(3px, 4px); }
+    }
+
+    /* Liquid Glass Floating Action Card */
+    .action-card {
+      position: absolute;
+      top: 136px;
+      left: 290px;
+      width: 360px;
+      background: var(--glass-bg);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid var(--glass-border);
+      border-top: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 18px;
+      box-shadow: var(--glass-glow), 0 20px 40px rgba(0, 0, 0, 0.45);
+      padding: 22px 22px 20px 22px;
+      z-index: 20;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    /* Header Row */
+    .action-card-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+    }
+
+    .action-card-header .app-icon {
+      font-size: 19px;
+      line-height: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .action-card-header .action-title {
+      font-size: 14.5px;
+      font-weight: 700;
+      color: #ffffff;
+      letter-spacing: -0.01em;
+    }
+
+    /* Form Preview Rows */
+    .action-card-body {
+      padding: 14px 0 16px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .field-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+
+    .field-label {
+      width: 56px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-muted);
+      padding-top: 2px;
+      flex-shrink: 0;
+    }
+
+    .field-value {
+      font-size: 13.5px;
+      color: var(--text-main);
+      line-height: 1.48;
+      flex-grow: 1;
+    }
+
+    /* Pill / Chip for recognized contact or tags */
+    .pill-chip {
+      display: inline-flex;
+      align-items: center;
+      background: rgba(255, 255, 255, 0.10);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 9999px;
+      padding: 3px 11px;
+      color: #ffffff;
+      font-size: 12.5px;
+      font-weight: 500;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+    }
+
+    /* Action Footer */
+    .action-card-footer {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      padding-top: 6px;
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      color: #94a3b8;
+      font-size: 12.5px;
+      font-weight: 500;
+      padding: 6px 16px;
+      border-radius: 9999px;
+      cursor: pointer;
+      transition: background 0.18s ease, color 0.18s ease;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.12);
+      color: #ffffff;
+    }
+
+    .btn-primary {
+      background: var(--accent-blue);
+      border: none;
+      color: #ffffff;
+      font-size: 12.5px;
+      font-weight: 600;
+      padding: 6px 20px;
+      border-radius: 9999px;
+      cursor: pointer;
+      box-shadow: 0 2px 10px rgba(10, 108, 255, 0.35);
+      transition: background 0.18s ease, transform 0.1s ease;
+    }
+
+    .btn-primary:hover {
+      background: var(--accent-blue-hover);
+    }
+
+    .btn-primary:active {
+      transform: scale(0.97);
+    }
+
+    /* Interactive Switcher Toolbar */
+    .controls-panel {
+      margin-top: 24px;
+      display: flex;
+      gap: 10px;
+      background: #ffffff;
+      padding: 8px 12px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+    }
+
+    .control-btn {
+      padding: 7px 14px;
+      border-radius: 8px;
+      border: 1px solid #e2e8f0;
+      background: #f8fafc;
+      color: #334155;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.18s ease;
+    }
+
+    .control-btn.active, .control-btn:hover {
+      background: #0A6CFF;
+      color: #ffffff;
+      border-color: #0A6CFF;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="demo-header">
+    <h1>Liquid Glass Action Card UI</h1>
+    <p>VoiceOS minimal dark glassmorphic floating action panel with diffuse blue glow</p>
+  </div>
+
+  <!-- Outer Frame: Device Canvas -->
+  <div class="device-canvas">
+    <!-- Left Half: Deep Blue Gradient -->
+    <div class="canvas-left"></div>
+
+    <!-- Right Half: Sky & Clouds Photographic Background -->
+    <div class="canvas-right">
+      <div class="cloud-layer"></div>
+    </div>
+
+    <!-- Floating Circular Globe Indicator -->
+    <div class="floating-globe-indicator" title="Active Context Source">
+      🌐
+    </div>
+
+    <!-- Cursor Pointer Near Card -->
+    <svg class="cursor-indicator" width="22" height="26" viewBox="0 0 22 26" fill="none">
+      <path d="M1 1L8.5 24L12.5 15.5L20.5 12L1 1Z" fill="white" stroke="#000000" stroke-width="1.6" stroke-linejoin="round"/>
+    </svg>
+
+    <!-- Liquid Glass Action Card Component -->
+    <div class="action-card" id="actionCard">
+      <div class="action-card-header">
+        <span class="app-icon" id="cardIcon">✉️</span>
+        <span class="action-title" id="cardTitle">New Message</span>
+      </div>
+
+      <div class="action-card-body" id="cardBody">
+        <!-- Default: Gmail New Message -->
+        <div class="field-row">
+          <span class="field-label">To</span>
+          <div class="field-value">
+            <span class="pill-chip">stephane@voiceos.com</span>
+          </div>
+        </div>
+        <div class="field-row">
+          <span class="field-label">Subject</span>
+          <div class="field-value">Quick sync on partnership</div>
+        </div>
+        <div class="field-row">
+          <span class="field-label">Body</span>
+          <div class="field-value">Hey Stephane, following up on our discussion yesterday about integrating the liquid glass action cards. Let me know when you're free to review.</div>
+        </div>
+      </div>
+
+      <div class="action-card-footer">
+        <button class="btn-secondary" onclick="simulateCancel()">Cancel</button>
+        <button class="btn-primary" id="cardPrimaryBtn" onclick="simulateConfirm()">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Demo Switcher for Different App Actions -->
+  <div class="controls-panel">
+    <button class="control-btn active" onclick="switchAction('gmail')">Gmail (New Message)</button>
+    <button class="control-btn" onclick="switchAction('calendar')">Calendar (New Event)</button>
+    <button class="control-btn" onclick="switchAction('linkedin')">LinkedIn (Profile Search)</button>
+    <button class="control-btn" onclick="switchAction('slack')">Slack (Team Message)</button>
+    <button class="control-btn" onclick="switchAction('reminder')">Reminder (Set Task)</button>
+  </div>
+
+  <script>
+    const presets = {
+      gmail: {
+        icon: '✉️',
+        title: 'New Message',
+        button: 'Send',
+        fields: [
+          { label: 'To', value: 'stephane@voiceos.com', isPill: true },
+          { label: 'Subject', value: 'Quick sync on partnership' },
+          { label: 'Body', value: "Hey Stephane, following up on our discussion yesterday about integrating the liquid glass action cards. Let me know when you're free to review." }
+        ]
+      },
+      calendar: {
+        icon: '📅',
+        title: 'New Event',
+        button: 'Schedule',
+        fields: [
+          { label: 'Event', value: 'Product Architecture Review' },
+          { label: 'Date', value: 'Tomorrow, 3:30 PM', isPill: true },
+          { label: 'With', value: 'Design Team', isPill: true }
+        ]
+      },
+      linkedin: {
+        icon: '🌐',
+        title: 'LinkedIn Search',
+        button: 'Open Profile',
+        fields: [
+          { label: 'Person', value: 'Satya Nadella', isPill: true },
+          { label: 'Role', value: 'Chairman and CEO at Microsoft' },
+          { label: 'Action', value: 'Opening candidate LinkedIn profile under cursor' }
+        ]
+      },
+      slack: {
+        icon: '💬',
+        title: 'Send Slack Message',
+        button: 'Send',
+        fields: [
+          { label: 'To', value: '#engineering-general', isPill: true },
+          { label: 'Message', value: 'The new liquid glass action overlay has been deployed. Testing cursor-as-context flow now.' }
+        ]
+      },
+      reminder: {
+        icon: '⏰',
+        title: 'Set Reminder',
+        button: 'Confirm',
+        fields: [
+          { label: 'Task', value: 'Review pull request for voice assistant upgrade' },
+          { label: 'Time', value: 'In 25 minutes', isPill: true }
+        ]
+      }
+    };
+
+    function switchAction(type) {
+      document.querySelectorAll('.control-btn').forEach(b => b.classList.remove('active'));
+      event.target.classList.add('active');
+
+      const data = presets[type];
+      document.getElementById('cardIcon').textContent = data.icon;
+      document.getElementById('cardTitle').textContent = data.title;
+      document.getElementById('cardPrimaryBtn').textContent = data.button;
+
+      const body = document.getElementById('cardBody');
+      body.innerHTML = '';
+
+      data.fields.forEach(f => {
+        const row = document.createElement('div');
+        row.className = 'field-row';
+        row.innerHTML = `
+          <span class="field-label">${f.label}</span>
+          <div class="field-value">
+            ${f.isPill ? `<span class="pill-chip">${f.value}</span>` : f.value}
+          </div>
+        `;
+        body.appendChild(row);
+      });
+    }
+
+    function simulateConfirm() {
+      const btn = document.getElementById('cardPrimaryBtn');
+      const orig = btn.textContent;
+      btn.textContent = 'Done ✓';
+      setTimeout(() => { btn.textContent = orig; }, 1200);
+    }
+
+    function simulateCancel() {
+      const card = document.getElementById('actionCard');
+      card.style.opacity = '0.4';
+      setTimeout(() => { card.style.opacity = '1'; }, 600);
+    }
+  </script>
+</body>
+</html>

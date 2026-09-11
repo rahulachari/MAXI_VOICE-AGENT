@@ -20,9 +20,23 @@ class BrowserTool(BaseTool):
         if action == "open_youtube":
             url = YouTubeAdapter.get_home_url()
             ChromeAdapter.open_url(url)
-            time.sleep(0.5)
-            ChromeAdapter.focus_chrome()
-            return ToolResult(status="SUCCESS", message="YouTube is open.", data={"url": url})
+            return ToolResult(
+                status="SUCCESS",
+                message="Opening YouTube for you.",
+                data={"url": url, "full_details": "🌐 YouTube opened in browser."},
+            )
+
+        elif action == "play_youtube":
+            query = kwargs.get("query", "")
+            if not query:
+                return ToolResult(status="FAILED", message="What would you like me to play on YouTube?")
+            url = YouTubeAdapter.get_direct_play_url(query)
+            ChromeAdapter.open_url(url)
+            return ToolResult(
+                status="SUCCESS",
+                message=f"Playing {query} on YouTube.",
+                data={"query": query, "url": url, "full_details": f"▶️ Playing: {query}\nURL: {url}"},
+            )
 
         elif action == "search_youtube":
             query = kwargs.get("query", "")
@@ -30,9 +44,11 @@ class BrowserTool(BaseTool):
                 return ToolResult(status="FAILED", message="What would you like to search on YouTube?")
             url = YouTubeAdapter.get_search_url(query)
             ChromeAdapter.open_url(url)
-            time.sleep(0.5)
-            ChromeAdapter.focus_chrome()
-            return ToolResult(status="SUCCESS", message=f"I've searched for {query} on YouTube.", data={"query": query, "url": url})
+            return ToolResult(
+                status="SUCCESS",
+                message=f"Searching YouTube for {query}.",
+                data={"query": query, "url": url, "full_details": f"🔍 YouTube Search: {query}"},
+            )
 
         elif action == "search_google":
             query = kwargs.get("query", "")
@@ -41,18 +57,22 @@ class BrowserTool(BaseTool):
             import urllib.parse
             url = f"https://www.google.com/search?q={urllib.parse.quote_plus(query)}"
             ChromeAdapter.open_url(url)
-            time.sleep(0.5)
-            ChromeAdapter.focus_chrome()
-            return ToolResult(status="SUCCESS", message=f"I've searched for {query}.", data={"query": query, "url": url})
+            return ToolResult(
+                status="SUCCESS",
+                message=f"Here is what I found for {query}.",
+                data={"query": query, "url": url, "full_details": f"🔍 Google Search: {query}"},
+            )
 
         elif action == "open_url":
             url = kwargs.get("url", "")
             if not url.startswith("http://") and not url.startswith("https://"):
                 url = f"https://{url}"
             ChromeAdapter.open_url(url)
-            time.sleep(0.5)
-            ChromeAdapter.focus_chrome()
-            return ToolResult(status="SUCCESS", message=f"Navigated to {url}.", data={"url": url})
+            return ToolResult(
+                status="SUCCESS",
+                message=f"Opening {url}.",
+                data={"url": url, "full_details": f"🌐 Navigating to: {url}"},
+            )
 
         elif action in ["scroll_down", "scroll"]:
             if not ChromeAdapter.focus_chrome():

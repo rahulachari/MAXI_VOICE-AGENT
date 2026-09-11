@@ -25,24 +25,42 @@ class GlobalHotkeyManager:
         self.on_history = on_history
 
         self._running = False
+        self._paused = False
         self._thread: Optional[threading.Thread] = None
         self._last_history_time = 0.0
         self._press_start_time = 0.0
         self._was_pressed = False
         self._is_history_mode = False
 
+    def pause(self):
+        self._paused = True
+        print("[Hotkey] Global hotkey listener PAUSED.")
+
+    def resume(self):
+        self._paused = False
+        print("[Hotkey] Global hotkey listener RESUMED.")
+
+    def is_paused(self) -> bool:
+        return self._paused
+
     def _fire_press(self):
+        if self._paused:
+            return
         print("[Hotkey] Ctrl+Alt DOWN (Listening / Hold to talk)")
         callback = self.on_press or self.on_activate
         if callback:
             threading.Thread(target=callback, daemon=True).start()
 
     def _fire_release(self, duration: float):
+        if self._paused:
+            return
         print(f"[Hotkey] Ctrl+Alt UP (Held for {duration:.2f}s)")
         if self.on_release:
             threading.Thread(target=lambda: self.on_release(duration), daemon=True).start()
 
     def _fire_history(self):
+        if self._paused:
+            return
         now = time.time()
         if now - self._last_history_time > 0.4:
             self._last_history_time = now
@@ -58,6 +76,9 @@ class GlobalHotkeyManager:
 
         def _loop():
             while self._running:
+                if self._paused:
+                    time.sleep(0.15)
+                    continue
                 try:
                     # Direct hardware state query via Windows Kernel API
                     # Checks both generic and specific Left/Right virtual key codes

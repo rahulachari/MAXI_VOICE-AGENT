@@ -3,6 +3,7 @@ JARVIS Application Lifecycle Manager
 Central orchestrator managing HUD states, tray, hotkeys, audio sessions, routing, and history logging.
 """
 
+import re
 import sys
 import threading
 import time
@@ -28,12 +29,15 @@ class LifecycleManager(QObject):
     sig_set_state = Signal(str, str)
     sig_set_energy = Signal(float)
     sig_show_action = Signal(str, str, str, bool)
+    sig_show_folder = Signal(str, str, list)
     sig_toggle_history = Signal()
     sig_open_settings = Signal()
     sig_popup = Signal()
     sig_disappear = Signal()
     sig_action_step = Signal(str, str, bool)
     sig_clear_pipeline = Signal()
+    sig_show_prompt = Signal(str, str)
+    sig_show_emails = Signal(list)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -65,6 +69,9 @@ class LifecycleManager(QObject):
         self._current_transcript = ""
         self._pending_confirmation = False
         self._pending_intent = None
+        self._latest_cursor_capture = None
+        self._cursor_ready_event = threading.Event()
+        self._cursor_ready_event.set()  # Initially ready
 
         self._connect_signals()
 
@@ -73,12 +80,15 @@ class LifecycleManager(QObject):
         self.sig_set_state.connect(self.notch.set_state)
         self.sig_set_energy.connect(self.notch.update_energy)
         self.sig_show_action.connect(self.notch.show_action_preview)
+        self.sig_show_folder.connect(self.notch.show_folder_preview)
         self.sig_toggle_history.connect(self.sidebar.toggle)
         self.sig_open_settings.connect(self.settings_dialog.show)
         self.sig_popup.connect(self.notch.pop_up)
         self.sig_disappear.connect(self.notch.disappear)
         self.sig_action_step.connect(self.notch.add_pipeline_step)
         self.sig_clear_pipeline.connect(self.notch.clear_pipeline)
+        self.sig_show_prompt.connect(self.notch.show_prompt_card)
+        self.sig_show_emails.connect(self.notch.show_email_list)
 
         # Notch signals
         self.notch.clicked.connect(self.toggle_session)
@@ -90,6 +100,7 @@ class LifecycleManager(QObject):
         self.tray.activate_requested.connect(self.toggle_session)
         self.tray.history_requested.connect(self.toggle_history)
         self.tray.settings_requested.connect(self.open_settings)
+        self.tray.pause_toggled.connect(self._on_pause_toggled)
         self.tray.mode_toggled.connect(self.notch.set_mode)
         self.tray.exit_requested.connect(self.shutdown)
         self.tray.restart_requested.connect(self.restart)
@@ -100,15 +111,27 @@ class LifecycleManager(QObject):
         # Settings signals
         self.settings_dialog.settings_saved.connect(self._on_settings_reloaded)
 
+    def _on_pause_toggled(self, is_paused: bool):
+        """Disables or resumes hotkeys and mic access."""
+        if is_paused:
+            self.hotkeys.pause()
+            if self.recorder.is_recording:
+                self.recorder.stop_listening()
+            tts_engine.stop()
+            self.notch.set_state("IDLE", "Assistant Paused")
+            print("[Lifecycle] Assistant paused from system tray.")
+        else:
+            self.hotkeys.resume()
+            self.notch.set_state("IDLE", "Ready • Hold Ctrl+Alt to speak")
+            print("[Lifecycle] Assistant resumed from system tray.")
+
     def start(self):
         """Starts background workers, tray icon, and global hotkeys."""
         self.tray.show()
-        # Keep Notch hidden until Ctrl+Alt is pressed or clicked
-        self.notch.hide()
-        self.notch.set_state("IDLE", "Ready • Hold Ctrl+Alt to speak")
+        # Keep Notch hidden by default until hotkey Ctrl+Alt is pressed
         self.notch.set_mode(config.get("active_mode", "agent"))
         self.hotkeys.start()
-        print("[Lifecycle] JARVIS VoiceOS operational (Notch HUD hidden, waiting for Ctrl+Alt).")
+        print("[Lifecycle] JARVIS VoiceOS operational (hidden background mode, press Ctrl+Alt to activate).")
 
     def shutdown(self):
         print("[Lifecycle] Shutting down JARVIS...")
@@ -118,6 +141,7 @@ class LifecycleManager(QObject):
         self.tray.hide()
         self.notch.close()
         self.sidebar.close()
+        self.floating_action_overlay.close()
         sys.exit(0)
 
     def restart(self):
@@ -131,12 +155,40 @@ class LifecycleManager(QObject):
 
     def on_hotkey_down(self):
         """Called as soon as Ctrl+Alt is pressed down (Push-to-Talk start)."""
+        from jarvis.utils.cursor_logger import log_layer
+        log_layer(1, "Global hotkey Ctrl+Alt detected DOWN")
+
         if tts_engine.is_speaking():
             tts_engine.stop()
 
         self._pending_confirmation = False
         self.sig_popup.emit()
         self.sig_set_state.emit("LISTENING", "Listening...")
+
+        # 1. Capture cursor coordinates & start in-memory ROI snapshot at exact moment of hotkey press
+        try:
+            from PySide6.QtGui import QCursor
+            pos = QCursor.pos()
+            cx, cy = pos.x(), pos.y()
+            log_layer(2, f"Cursor position recorded at hotkey trigger", x=cx, y=cy)
+
+            self._cursor_ready_event.clear()
+
+            def _capture_cursor_roi():
+                try:
+                    res = self.router.screen_tool.execute("capture_cursor_region", cursor_pos=(cx, cy))
+                    if res.is_success():
+                        self._latest_cursor_capture = res.data
+                        log_layer(3, "In-memory cursor ROI capture ready", bytes=len(res.data.get("image_bytes", b"")))
+                except Exception as e:
+                    log_layer(3, "In-memory pre-capture error", error=str(e))
+                finally:
+                    self._cursor_ready_event.set()
+
+            threading.Thread(target=_capture_cursor_roi, daemon=True).start()
+        except Exception as e:
+            log_layer(2, "Cursor capture initialization failed", error=str(e))
+            self._cursor_ready_event.set()
 
         if not self.recorder.is_recording:
             self.recorder.start_listening(push_to_talk=True)
@@ -197,6 +249,26 @@ class LifecycleManager(QObject):
         self.stt_provider = get_stt_provider()
         self.notch.set_mode(config.get("active_mode", "agent"))
 
+    @staticmethod
+    def _clean_for_display(text: str) -> str:
+        """Strip markdown formatting for clean HUD display."""
+        if not text:
+            return text
+        # Remove markdown headers (###, ##, #)
+        t = re.sub(r'^#{1,6}\s*', '', text, flags=re.MULTILINE)
+        # Remove bold/italic markers
+        t = re.sub(r'\*{1,3}([^*]+)\*{1,3}', r'\1', t)
+        t = re.sub(r'_{1,3}([^_]+)_{1,3}', r'\1', t)
+        # Remove bullet points (• , - , * at line start)
+        t = re.sub(r'^[•\-\*]\s+', '', t, flags=re.MULTILINE)
+        # Remove code backticks
+        t = re.sub(r'`([^`]+)`', r'\1', t)
+        # Remove emojis (common unicode ranges)
+        t = re.sub(r'[\U0001F300-\U0001F9FF\U00002600-\U000027BF\U0001FA00-\U0001FA6F]', '', t)
+        # Collapse multiple blank lines
+        t = re.sub(r'\n{3,}', '\n\n', t)
+        return t.strip()
+
     def _on_audio_energy(self, energy: float):
         self.sig_set_energy.emit(energy)
 
@@ -229,21 +301,36 @@ class LifecycleManager(QObject):
         self.sig_clear_pipeline.emit()
 
         def _worker():
-            intent, result = self.router.route_and_execute(transcript)
+            from jarvis.utils.cursor_logger import log_layer
+            # Layer 5: Guarantee cursor capture is ready (prevent race condition between speech & screen capture)
+            if hasattr(self, "_cursor_ready_event") and not self._cursor_ready_event.is_set():
+                log_layer(5, "Awaiting in-memory cursor ROI before routing", transcript=transcript)
+                self._cursor_ready_event.wait(timeout=1.5)
 
-            # Check if confirmation is required
-            if result.requires_confirmation:
-                self._pending_confirmation = True
+            cursor_data = getattr(self, "_latest_cursor_capture", None)
+            log_layer(5, "Routing command with cursor context", has_cursor=bool(cursor_data), transcript=transcript)
+            intent, result = self.router.route_and_execute(transcript, cursor_data=cursor_data)
+
+            # Check if confirmation is required OR staged action (email sending, message, reminder)
+            is_staged = (
+                result.requires_confirmation
+                or (intent and intent.category.value == "CALENDAR")
+                or (intent and intent.category.value == "MESSAGING")
+                or (intent and intent.category.value == "EMAIL" and intent.action not in ["read_emails", "check_emails", "check_gmail", "read_inbox", "read_gmail"])
+            )
+            if is_staged:
+                self._pending_confirmation = result.requires_confirmation
                 self._pending_intent = intent
-                self.sig_show_action.emit(
-                    intent.target or "Safety Guard",
-                    result.confirmation_prompt or result.message,
-                    "⚠️",
-                    True,
-                )
-                self.sig_set_state.emit("CONFIRMATION_REQUIRED", result.message)
-                tts_engine.speak(result.message)
-                return
+                title = intent.target or intent.category.value.title()
+                details = result.confirmation_prompt or result.message
+                icon = "✉️" if intent.category.value == "EMAIL" else ("📅" if intent.category.value == "CALENDAR" else "⚡")
+
+                self.sig_show_action.emit(title, details, icon, result.requires_confirmation)
+
+                if result.requires_confirmation:
+                    self.sig_set_state.emit("CONFIRMATION_REQUIRED", result.message)
+                    tts_engine.speak(result.message)
+                    return
 
             self._process_result(intent, result, transcript)
 
@@ -251,7 +338,34 @@ class LifecycleManager(QObject):
 
     def _process_result(self, intent, result, transcript: str):
         status_text = result.message
-        full_details = intent.params.get("full_details") or status_text
+
+        # Check if folder browser view needs to be rendered in the top-center notch
+        if result.data and result.data.get("is_folder_browser"):
+            f_name = result.data.get("folder_name", "Folder")
+            f_path = result.data.get("folder_path", "")
+            items = result.data.get("items", [])
+            self.sig_show_folder.emit(f_name, f_path, items)
+
+        # Check if prompt card needs to be rendered in the notch
+        elif result.data and result.data.get("is_prompt_card"):
+            topic = result.data.get("topic", "Custom Prompt")
+            prompt_text = result.data.get("prompt_text", "")
+            self.sig_show_prompt.emit(topic, prompt_text)
+
+        # Check if email list card needs to be rendered in the notch
+        elif result.data and result.data.get("is_email_list"):
+            emails = result.data.get("emails", [])
+            self.sig_show_emails.emit(emails)
+
+        # Pull full_details from: 1) tool result data, 2) intent params, 3) status_text
+        full_details = (
+            (result.data or {}).get("full_details")
+            or intent.params.get("full_details")
+            or status_text
+        )
+
+        # Strip markdown formatting for clean HUD display
+        hud_text = self._clean_for_display(full_details)
 
         # Multi-step pipeline tracking
         if result.next_steps:
@@ -265,15 +379,15 @@ class LifecycleManager(QObject):
                 time.sleep(1.0) # simulate processing step
                 self.sig_action_step.emit(f"Step {step_count}: {next_step}", "⚡", True)
 
-        # Immediately display full details in top notch HUD
+        # Immediately display clean text in top notch HUD
         if result.is_success():
-            self.sig_set_state.emit("SPEAKING", full_details)
+            self.sig_set_state.emit("SPEAKING", hud_text)
         else:
-            self.sig_set_state.emit("ERROR", status_text)
+            self.sig_set_state.emit("ERROR", self._clean_for_display(status_text))
 
         # Feed turn into Chat Composer Thread
         try:
-            self.sidebar.add_chat_turn(transcript, full_details)
+            self.sidebar.add_chat_turn(transcript, hud_text)
         except Exception as e:
             print(f"[Lifecycle] Failed to add chat turn: {e}")
 
@@ -289,13 +403,12 @@ class LifecycleManager(QObject):
                 result_summary=status_text,
             )
 
-        # Spoken response with Gemini Lyra voice
-        spoken_text = intent.confirmation_prompt or status_text
+        # Speak the actual answer (result.message), not just the short confirmation
+        spoken_text = status_text
 
         def on_tts_finish():
             # Keep notch open so the user can read the complete response
-            # Hotkey / mic listener is ready for next input without disappearing
-            self.sig_set_state.emit("IDLE", full_details)
+            self.sig_set_state.emit("IDLE", hud_text)
 
         tts_engine.speak(spoken_text, on_finish=on_tts_finish)
 

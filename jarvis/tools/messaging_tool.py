@@ -81,7 +81,9 @@ class MessagingTool(BaseTool):
             time.sleep(0.8)
 
             if message:
-                pyautogui.typewrite(message, interval=0.02)
+                from jarvis.utils.text_cleaner import clean_for_plain_text
+                clean_msg = clean_for_plain_text(message, target="plain")
+                pyautogui.typewrite(clean_msg, interval=0.02)
                 # Don't auto-send: let the user review first
                 return ToolResult(
                     status="SUCCESS",
@@ -119,7 +121,9 @@ class MessagingTool(BaseTool):
             time.sleep(0.5)
 
             if message:
-                pyautogui.typewrite(message, interval=0.02)
+                from jarvis.utils.text_cleaner import clean_for_plain_text
+                clean_msg = clean_for_plain_text(message, target="plain")
+                pyautogui.typewrite(clean_msg, interval=0.02)
                 return ToolResult(
                     status="SUCCESS",
                     message=f"Typed your message to {contact.title()} on Telegram. Press Enter to send.",
@@ -136,14 +140,19 @@ class MessagingTool(BaseTool):
     def compose_email(self, recipient: str = "", subject: str = "", body: str = "") -> ToolResult:
         """Opens Gmail compose in the browser with optional pre-filled fields."""
         try:
+            from jarvis.utils.text_cleaner import clean_for_plain_text
+
+            clean_subj = clean_for_plain_text(subject, target="plain") if subject else ""
+            clean_body = clean_for_plain_text(body, target="email") if body else ""
+
             # Build Gmail compose URL
             params = {}
             if recipient:
-                params["to"] = recipient
-            if subject:
-                params["su"] = subject
-            if body:
-                params["body"] = body
+                params["to"] = recipient.strip()
+            if clean_subj:
+                params["su"] = clean_subj
+            if clean_body:
+                params["body"] = clean_body
 
             if params:
                 url = f"https://mail.google.com/mail/?view=cm&fs=1&{urllib.parse.urlencode(params)}"

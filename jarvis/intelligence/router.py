@@ -25,6 +25,9 @@ from jarvis.tools import (
 from jarvis.tools.memory_tool import MemoryTool
 from jarvis.tools.calendar_tool import CalendarTool
 from jarvis.tools.task_tool import TaskTool
+from jarvis.tools.weather_tool import WeatherTool
+from jarvis.tools.email_reader_tool import EmailReaderTool
+from jarvis.tools.prompt_gen_tool import PromptGeneratorTool
 from jarvis.app.config import config
 
 
@@ -45,10 +48,14 @@ class CommandRouter:
         self.memory_tool = MemoryTool()
         self.calendar_tool = CalendarTool()
         self.task_tool = TaskTool()
+        self.weather_tool = WeatherTool()
+        self.email_reader_tool = EmailReaderTool()
+        self.prompt_gen_tool = PromptGeneratorTool()
 
-    def route_and_execute(self, transcript: str) -> Tuple[Intent, ToolResult]:
+    def route_and_execute(self, transcript: str, cursor_data: Optional[Dict[str, Any]] = None) -> Tuple[Intent, ToolResult]:
         """
         Parses intent and executes the corresponding tool action.
+        Accepts optional in-memory cursor_data captured at hotkey press time.
         Returns: (Intent, ToolResult)
         """
         active_mode = config.get("active_mode", "agent")
@@ -59,27 +66,71 @@ class CommandRouter:
             res = self.dictation_tool.execute("dictate", text=transcript)
             return intent, res
 
-        # 2. Local Semantic Engine (instant offline evaluation)
+        # 0. Check for pending single clarifying question from previous turn
+        pending = context_engine.get_pending_clarification()
+        if pending:
+            context_engine.clear_pending_clarification()
+            missing_param = pending.get("missing_param")
+            intent_dict = pending.get("intent_dict", {})
+            params = intent_dict.get("params", {})
+            params[missing_param] = transcript.strip()
+            intent = Intent(
+                category=IntentCategory(intent_dict["category"]),
+                target=intent_dict.get("target"),
+                action=intent_dict.get("action"),
+                params=params,
+                requires_confirmation=intent_dict.get("requires_confirmation", False),
+            )
+            result = self._dispatch_tool(intent, cursor_data=cursor_data)
+            return intent, result
+
+        # 1. Fast Local Semantic Engine (instant offline sub-millisecond recognition)
         intent = LocalSemanticEngine.parse(transcript)
 
-        # 3. Cloud AI Provider Fallback
-        if not intent:
+        # 2. Cloud AI Provider for conversational reasoning and complex commands
+        if not intent and self.ai_provider.gemini_key:
             ctx = context_engine.get_desktop_context()
             intent = self.ai_provider.parse_intent(transcript, ctx)
 
-        # 4. Fallback to General AI Query
+        # 3. Fallback: General AI Query
         if not intent:
-            intent = Intent(category=IntentCategory.AI_QUERY, action="query", params={"query": transcript})
+            intent = Intent(
+                category=IntentCategory.AI_QUERY,
+                action="query",
+                params={"query": transcript},
+            )
+
+        # 4. Action Registry Parameter Validation (single clarifying question if required param missing)
+        from .action_registry import validate_intent_parameters
+        clarify = validate_intent_parameters(intent)
+        if clarify:
+            missing_param, question = clarify
+            context_engine.set_pending_clarification(
+                {
+                    "category": intent.category.value,
+                    "target": intent.target,
+                    "action": intent.action,
+                    "params": intent.params,
+                    "requires_confirmation": intent.requires_confirmation,
+                },
+                missing_param=missing_param,
+                question=question,
+            )
+            return intent, ToolResult(
+                status="NEEDS_CLARIFICATION",
+                message=question,
+                data={"clarifying_question": question, "missing_param": missing_param},
+            )
 
         # Update context for follow-up conversational commands
         if intent.target:
             context_engine.update_interaction(intent.category.value, intent.target)
 
         # 5. Tool Execution
-        result = self._dispatch_tool(intent)
+        result = self._dispatch_tool(intent, cursor_data=cursor_data)
         return intent, result
 
-    def _dispatch_tool(self, intent: Intent) -> ToolResult:
+    def _dispatch_tool(self, intent: Intent, cursor_data: Optional[Dict[str, Any]] = None) -> ToolResult:
         cat = intent.category
 
         if cat in [IntentCategory.APP_LAUNCH, IntentCategory.APP_CLOSE, IntentCategory.APP_FOCUS, IntentCategory.WINDOW_CONTROL, IntentCategory.SYSTEM_CONTROL]:
@@ -97,24 +148,30 @@ class CommandRouter:
         elif cat == IntentCategory.KEYBOARD_SHORTCUT:
             return self.keyboard_tool.execute(intent.action, **intent.params)
 
-        elif cat == IntentCategory.MESSAGING:
-            return self.messaging_tool.execute(intent.action, **intent.params)
-
         elif cat == IntentCategory.EMAIL:
+            if intent.action in ["read_emails", "check_emails", "check_gmail", "read_inbox", "read_gmail"]:
+                return self.email_reader_tool.execute(intent.action, **intent.params)
             return self.messaging_tool.execute(intent.action, **intent.params)
 
-        elif cat == IntentCategory.PHONE_CALL:
+        elif cat in [IntentCategory.MESSAGING, IntentCategory.PHONE_CALL]:
             return self.messaging_tool.execute(intent.action, **intent.params)
+
+        elif cat == IntentCategory.PROMPT_GEN:
+            return self.prompt_gen_tool.execute(intent.action, **intent.params)
 
         elif cat == IntentCategory.MEDIA_CONTROL:
             return self.media_tool.execute(intent.action, **intent.params)
 
         elif cat == IntentCategory.MUSIC:
-            # Play music: open search on YouTube/Spotify
             query = intent.params.get("query", "")
-            if query:
-                return self.browser_tool.execute("search_youtube", query=query)
-            return ToolResult(status="FAILED", message="What would you like me to play?")
+            target = (intent.target or "").lower()
+            action = (intent.action or "").lower()
+            if target == "spotify" or action == "play_spotify":
+                return self.media_tool.execute("play_spotify", query=query)
+            else:
+                if query:
+                    return self.browser_tool.execute("play_youtube", query=query)
+                return self.media_tool.execute("play_pause")
 
         elif cat == IntentCategory.SCREENSHOT:
             import pyautogui
@@ -131,21 +188,26 @@ class CommandRouter:
             task = intent.params.get("task", "")
             amount = intent.params.get("amount", 5)
             unit = intent.params.get("unit", "minutes")
-            return ToolResult(
-                status="SUCCESS",
-                message=f"I'll remind you to {task} in {amount} {unit}. Note: Desktop notifications for reminders are coming soon.",
-            )
+            return self.task_tool.execute("add_task", title=task or f"Reminder ({amount} {unit})")
 
         elif cat == IntentCategory.SCREEN_ANALYSIS:
-            # Capture screen then pass to vision
             cap_res = self.screen_tool.execute("capture_screen")
-            img_path = cap_res.data.get("image_path", "")
-            return self.vision_tool.execute("analyze", image_path=img_path, prompt=intent.params.get("prompt", ""))
+            img_bytes = cap_res.data.get("image_bytes") if cap_res.data else None
+            return self.vision_tool.execute("analyze", image_bytes=img_bytes, prompt=intent.params.get("prompt", "Analyze what is on the screen."))
 
         elif cat == IntentCategory.CURSOR_ANALYSIS:
-            cap_res = self.screen_tool.execute("capture_cursor_region")
-            img_path = cap_res.data.get("image_path", "")
-            return self.vision_tool.execute("analyze", image_path=img_path, prompt=intent.params.get("prompt", ""))
+            # Use in-memory cursor capture from hotkey trigger if available
+            if cursor_data and cursor_data.get("image_bytes"):
+                img_bytes = cursor_data.get("image_bytes")
+                text_hint = cursor_data.get("text_hint", "")
+            else:
+                cap_res = self.screen_tool.execute("capture_cursor_region")
+                img_bytes = cap_res.data.get("image_bytes") if cap_res.data else None
+                text_hint = cap_res.data.get("text_hint", "") if cap_res.data else ""
+
+            action = intent.action or "analyze"
+            prompt = intent.params.get("prompt", "What is at this cursor position and what does it show?")
+            return self.vision_tool.execute(action, image_bytes=img_bytes, text_hint=text_hint, prompt=prompt)
 
         elif cat == IntentCategory.AI_QUERY:
             return self.ai_query_tool.execute(
@@ -153,6 +215,14 @@ class CommandRouter:
                 query=intent.params.get("query", ""),
                 answer=intent.confirmation_prompt,
             )
+
+        elif cat == IntentCategory.WEATHER:
+            action = intent.action or "get_weather"
+            return self.weather_tool.execute(action, **intent.params)
+
+        elif cat == IntentCategory.TIME:
+            action = intent.action or "get_time"
+            return self.weather_tool.execute(action, **intent.params)
 
         elif cat == IntentCategory.CANCEL:
             return ToolResult(status="CANCELLED", message="Cancelled.")
@@ -165,5 +235,43 @@ class CommandRouter:
 
         elif cat == IntentCategory.MEMORY:
             return self.memory_tool.execute(intent.action, **intent.params)
+
+        elif cat == IntentCategory.FOLDER_BROWSE:
+            from jarvis.tools.folder_registry import folder_registry
+            action = intent.action or "browse_folder"
+            if action == "set_alias":
+                folder_src = intent.params.get("folder", "")
+                alias_dst = intent.params.get("alias", "")
+                path, err = folder_registry.resolve_folder(folder_src)
+                if not path:
+                    return ToolResult(status="FAILED", message=err or f"Could not find folder '{folder_src}'.")
+                success = folder_registry.save_custom_alias(alias_dst, str(path))
+                if success:
+                    return ToolResult(status="SUCCESS", message=f"Saved alias: '{alias_dst}' now opens your {path.name} folder.")
+                return ToolResult(status="FAILED", message=f"Could not save alias '{alias_dst}'.")
+
+            folder_name = intent.params.get("folder", "downloads")
+            path, err = folder_registry.resolve_folder(folder_name)
+            if not path:
+                return ToolResult(status="FAILED", message=err or f"Could not find folder '{folder_name}'.")
+
+            # Validate security sandbox
+            valid, err = folder_registry.validate_sandbox(path)
+            if not valid:
+                return ToolResult(status="FAILED", message=err)
+
+            items = folder_registry.list_folder_contents(path, limit=15)
+            summary_msg = f"Here is your {path.name.title()} folder with {len(items)} items."
+            return ToolResult(
+                status="SUCCESS",
+                message=summary_msg,
+                data={
+                    "is_folder_browser": True,
+                    "folder_name": path.name,
+                    "folder_path": str(path),
+                    "items": items,
+                    "full_details": f"Folder: {path.name.title()} ({str(path)})\nItems: {len(items)} files listed.",
+                },
+            )
 
         return ToolResult(status="FAILED", message="Unrecognized command category.")

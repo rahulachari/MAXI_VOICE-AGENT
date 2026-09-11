@@ -16,3 +16,4 @@ build/
 *.db
 *.log
 scratch/
+jarvis/debug_captures/

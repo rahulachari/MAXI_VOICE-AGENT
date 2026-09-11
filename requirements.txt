@@ -12,3 +12,5 @@ pillow>=10.0.0
 pytesseract>=0.3.10
 python-dotenv>=1.0.0
 pytest>=8.0.0
+pyperclip>=1.8.2
+comtypes>=1.2.0
