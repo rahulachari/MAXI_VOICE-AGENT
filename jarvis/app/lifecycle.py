@@ -22,7 +22,7 @@ from jarvis.voice.speech_to_text import get_stt_provider
 from jarvis.voice.text_to_speech import tts_engine
 from jarvis.intelligence.router import CommandRouter
 from jarvis.storage.history_repository import HistoryRepository
-from jarvis.app.live_mode import LiveSessionManager
+from jarvis.app.daemon_live import DaemonLiveSessionManager
 
 
 class LifecycleManager(QObject):
@@ -59,6 +59,11 @@ class LifecycleManager(QObject):
         self._processing_watchdog.setSingleShot(True)
         self._processing_watchdog.timeout.connect(self._on_processing_timeout)
 
+        # Auto-dismiss timer to close the notch into rest mode without orbs after speech/action completion
+        self._auto_dismiss_timer = QTimer(self)
+        self._auto_dismiss_timer.setSingleShot(True)
+        self._auto_dismiss_timer.timeout.connect(self._on_auto_dismiss_timeout)
+
         # Recorder
         self.recorder = MicrophoneRecorder(
             energy_callback=self._on_audio_energy,
@@ -80,10 +85,11 @@ class LifecycleManager(QObject):
         self._cursor_ready_event = threading.Event()
         self._cursor_ready_event.set()  # Initially ready
         
-        self.live_session = LiveSessionManager(
+        self.daemon_live = DaemonLiveSessionManager(
             on_state_change=lambda state, text: self.sig_set_state.emit(state, text),
-            start_listening_callback=lambda: self.recorder.start_listening(push_to_talk=False)
+            start_listening_callback=lambda: self.recorder.start_listening(push_to_talk=False),
         )
+        self.live_session = self.daemon_live
 
         self._connect_signals()
 
@@ -96,7 +102,7 @@ class LifecycleManager(QObject):
         self.sig_toggle_history.connect(self.sidebar.toggle)
         self.sig_open_settings.connect(self.settings_dialog.show)
         self.sig_popup.connect(self.notch.pop_up)
-        self.sig_disappear.connect(self.notch.disappear)
+        self.sig_disappear.connect(self.notch.close_to_rest)
         self.sig_action_step.connect(self.notch.add_pipeline_step)
         self.sig_clear_pipeline.connect(self.notch.clear_pipeline)
         self.sig_show_prompt.connect(self.notch.show_prompt_card)
@@ -109,6 +115,7 @@ class LifecycleManager(QObject):
         self.notch.cancelled.connect(self._on_action_cancelled)
         self.notch.close_requested.connect(self.dismiss_notch)
         self.notch.live_toggled.connect(self._on_live_toggled)
+        self.notch.voice_mute_toggled.connect(self._on_voice_mute_toggled)
 
         # Tray signals
         self.tray.activate_requested.connect(self.toggle_session)
@@ -180,15 +187,45 @@ class LifecycleManager(QObject):
         import os
         os.execv(sys.executable, [sys.executable] + sys.argv)
 
+    def _schedule_auto_dismiss(self, delay_ms: int = 1800):
+        """Schedules the notch to auto-close into rest mode without orbs after speech or work completion."""
+        if self.live_session.is_active:
+            return
+        if self.recorder.is_recording or self._pending_confirmation:
+            return
+        self._auto_dismiss_timer.stop()
+        self._auto_dismiss_timer.start(delay_ms)
+
+    def _cancel_auto_dismiss(self):
+        self._auto_dismiss_timer.stop()
+
+    @Slot()
+    def _on_auto_dismiss_timeout(self):
+        """Automatically closes the notch into rest mode without orbs if user is inactive."""
+        if self.recorder.is_recording or self.live_session.is_active or self._pending_confirmation:
+            return
+        if self.notch.underMouse() or self.notch._has_persistent_card():
+            self._auto_dismiss_timer.start(2000)
+            return
+        print("[Lifecycle] Inactivity after completion: closing notch into rest mode without orbs.")
+        self.sig_disappear.emit()
+
     # === Interaction Lifecycle ===
 
     def on_hotkey_down(self):
         """Called as soon as Ctrl+Alt is pressed down (Push-to-Talk start)."""
         from jarvis.utils.cursor_logger import log_layer
         log_layer(1, "Global hotkey Ctrl+Alt detected DOWN")
+        self._cancel_auto_dismiss()
 
         if tts_engine.is_speaking():
             tts_engine.stop()
+
+        # If Live mode is currently running, stop it cleanly to prioritize direct push-to-talk
+        if self.live_session.is_active:
+            print("[Lifecycle] Ctrl+Alt pressed: stopping active Live Mode session.")
+            self.live_session.stop()
+            self.notch.btn_live.setChecked(False)
 
         self._pending_confirmation = False
         self.sig_popup.emit()
@@ -234,20 +271,40 @@ class LifecycleManager(QObject):
 
     @Slot()
     def dismiss_notch(self):
-        """Immediately silences speech, cancels recording, and smoothly dismisses the notch."""
+        """Immediately silences speech, cancels recording, and smoothly dismisses the notch into rest mode."""
+        self._cancel_auto_dismiss()
         tts_engine.stop()
+        self.notch.set_voice_active(False)
         if self.recorder.is_recording:
             self.recorder.stop_listening()
         self.sig_disappear.emit()
-        self.sig_set_state.emit("IDLE", "Ready • Hold Ctrl+Alt to speak")
+
+    @Slot(bool)
+    def _on_voice_mute_toggled(self, mute: bool):
+        """Mutes ongoing speech or replays the current HUD description text aloud."""
+        if mute:
+            tts_engine.stop()
+            self.notch.set_voice_active(False)
+            print("[Lifecycle] Voice muted via HUD button.")
+        else:
+            text = self.notch.prompt_label.text().strip()
+            if text and text not in ["What can I do for you?", "Ready • Hold Ctrl+Alt to speak", "Listening...", "Thinking..."]:
+                self.notch.set_voice_active(True)
+                print("[Lifecycle] Voice unmuted: reading description aloud.")
+                def on_finish():
+                    self.notch.set_voice_active(False)
+                tts_engine.speak(text, on_finish=on_finish)
 
     @Slot()
     def toggle_session(self):
         """Called when user clicks the orb or tray icon."""
+        self._cancel_auto_dismiss()
         # If TTS is speaking, pause the voice, but KEEP the notch visible so the user can read!
         if tts_engine.is_speaking():
             tts_engine.stop()
+            self.notch.set_voice_active(False)
             self.sig_set_state.emit("IDLE", self.notch.prompt_label.text())
+            self._schedule_auto_dismiss(1800)
             return
 
         # If currently analyzing or executing an action, ignore clicks to prevent conflicting sessions
@@ -274,11 +331,18 @@ class LifecycleManager(QObject):
     @Slot(bool)
     def _on_live_toggled(self, is_active: bool):
         if is_active:
+            print("[Lifecycle] Starting continuous Daemon Live session.")
+            self._cancel_auto_dismiss()
+            if self.recorder.is_recording:
+                self.recorder.stop_listening()
+            tts_engine.stop()
             self.sig_popup.emit()
-            self.live_session.start()
+            self.daemon_live.start()
         else:
-            self.live_session.stop()
+            print("[Lifecycle] Stopping Daemon Live session.")
+            self.daemon_live.stop()
             self.sig_set_state.emit("IDLE", "Ready • Hold Ctrl+Alt to speak")
+            self._schedule_auto_dismiss(1800)
 
     @Slot()
     def open_settings(self):
@@ -290,41 +354,111 @@ class LifecycleManager(QObject):
 
     @staticmethod
     def _clean_for_display(text: str) -> str:
-        """Strip markdown formatting for clean HUD display."""
+        """Strip markdown syntax while formatting steps and list items as clean, left-aligned bullet points."""
         if not text:
             return text
-        # Remove markdown headers (###, ##, #)
-        t = re.sub(r'^#{1,6}\s*', '', text, flags=re.MULTILINE)
-        # Remove bold/italic markers
+        t = text
+        # 1. Strip URLs
+        t = re.sub(r'(?i)URL:\s*https?://\S+', '', t)
+        t = re.sub(r'https?://\S+', '', t)
+        # 2. Markdown headers
+        t = re.sub(r'^#{1,6}\s*', '', t, flags=re.MULTILINE)
+        # 3. Markdown bold/italic/ticks
         t = re.sub(r'\*{1,3}([^*]+)\*{1,3}', r'\1', t)
         t = re.sub(r'_{1,3}([^_]+)_{1,3}', r'\1', t)
-        # Remove bullet points (• , - , * at line start)
-        t = re.sub(r'^[•\-\*]\s+', '', t, flags=re.MULTILINE)
-        # Remove code backticks
         t = re.sub(r'`([^`]+)`', r'\1', t)
-        # Remove emojis (common unicode ranges)
+        # 4. Remove duplicate dots like ..
+        t = re.sub(r'\.{2,}', '.', t)
+        # 5. Emojis
+        t = re.sub(r'[\u25A0-\u25FF\u23E9-\u23F3\u23F8-\u23FA\uFE00-\uFE0F]', '', t)
         t = re.sub(r'[\U0001F300-\U0001F9FF\U00002600-\U000027BF\U0001FA00-\U0001FA6F]', '', t)
-        # Collapse multiple blank lines
-        t = re.sub(r'\n{3,}', '\n\n', t)
-        return t.strip()
+
+        # 6. Normalize steps, numbered points, and bullets even when smashed in a single line/paragraph:
+        # Separate intro if followed by '1. ' or 'Step 1'
+        t = re.sub(r'(?i)([:.!?])\s*(?:•\s*)?(Step\s*\d+[:.-]?|\b1[\).]\s+)', r'\1\n\n• \2', t)
+
+        # Split on smashed 'Step \d+' (e.g. '... two hours.. Step 2: ...' or '... two hours. Step 2: ...')
+        t = re.sub(r'(?i)(?<=\S)\s*(?:[.;]|\.{2,})?\s*(?:•\s*)?(Step\s*\d+[:.-]?)', r'\n\n• \1', t)
+
+        # Split on smashed numbered items e.g. '... daily. 2. Next' or '... daily 2) Next'
+        t = re.sub(r'(?<=[.!?\w])\s*(?:[.;])?\s+(?:•\s*)?(\d+[\).]\s+[A-Z])', r'\n\n• \1', t)
+
+        # Split on smashed bullet dots '• Item' (Unicode bullet •)
+        t = re.sub(r'(?<=\S)\s*[.;]?\s+•\s+', r'\n\n• ', t)
+
+        # Split on smashed ordinals: '... meat. Second, boil...' or '... pot. Finally, serve...'
+        t = re.sub(r'(?i)(?<=[.!?])\s+((?:First|Second|Third|Fourth|Fifth|Sixth|Seventh|Eighth|Ninth|Tenth|Finally|Lastly),?\s+[A-Z])', r'\n\n• \1', t)
+
+        lines = t.split('\n')
+        formatted = []
+        for line in lines:
+            l = line.strip()
+            if not l:
+                continue
+
+            # Check if line is Step X
+            m_step = re.match(r'^(?:•\s*)?Step\s*(\d+)[:.-]?\s*(.*)', l, re.IGNORECASE | re.DOTALL)
+            if m_step:
+                num = m_step.group(1)
+                body = m_step.group(2).strip()
+                body = re.sub(r'^[:.-]\s*', '', body).strip()
+                formatted.append(f'• Step {num}: {body}')
+                continue
+
+            # Check if line is numbered e.g. 1. or 1)
+            m_num = re.match(r'^(?:•\s*)?(\d+)[\).]\s*(.*)', l, re.DOTALL)
+            if m_num:
+                num = m_num.group(1)
+                body = m_num.group(2).strip()
+                formatted.append(f'• {num}. {body}')
+                continue
+
+            # Check if line begins with bullet/dash
+            if l.startswith(('-', '*', '•', '+')):
+                cleaned_bullet = l.lstrip('-*•+ ').strip()
+                formatted.append(f'• {cleaned_bullet}')
+                continue
+
+            # Check if line is an ordinal step: First, Second, etc.
+            m_ord = re.match(r'^(?:•\s*)?((?:First|Second|Third|Fourth|Fifth|Sixth|Seventh|Eighth|Ninth|Tenth|Finally|Lastly),?)\s+(.*)', l, re.IGNORECASE | re.DOTALL)
+            if m_ord:
+                ord_word = m_ord.group(1).rstrip(',')
+                body = m_ord.group(2).strip()
+                formatted.append(f'• {ord_word.capitalize()}: {body}')
+                continue
+
+            formatted.append(l)
+
+        res = '\n\n'.join(formatted)
+        res = re.sub(r'\n{3,}', '\n\n', res)
+        return res.strip()
+
 
     def _on_audio_energy(self, energy: float):
         self.sig_set_energy.emit(energy)
 
     def _on_speech_finished(self, audio_data: np.ndarray):
         """Called asynchronously when user finishes speaking (VAD silence detected)."""
-        if self.live_session.is_active:
+        self._cancel_auto_dismiss()
+        if self.daemon_live.is_active:
             self.sig_set_state.emit("PROCESSING", "Transcribing speech...")
             def _live_worker():
                 try:
                     transcript = self.stt_provider.transcribe(audio_data)
-                    if transcript and transcript.strip():
-                        self.live_session.process_turn(transcript)
+                    clean_t = (transcript or "").strip()
+                    if clean_t and len(clean_t) > 1:
+                        self.daemon_live.process_turn(clean_t)
                     else:
-                        self.live_session.start_listening()
+                        print("[DaemonLive] Inaudible or empty speech, resuming continuous listening.")
+                        time.sleep(0.25)
+                        if self.daemon_live.is_active:
+                            self.sig_set_state.emit("LISTENING", "Daemon Live • Listening...")
+                            self.recorder.start_listening(push_to_talk=False)
                 except Exception as e:
-                    print(f"Live STT error: {e}")
-                    self.live_session.start_listening()
+                    print(f"[DaemonLive] STT error: {e}")
+                    if self.daemon_live.is_active:
+                        self.sig_set_state.emit("LISTENING", "Daemon Live • Listening...")
+                        self.recorder.start_listening(push_to_talk=False)
             threading.Thread(target=_live_worker, daemon=True).start()
             return
             
@@ -345,6 +479,7 @@ class LifecycleManager(QObject):
                 self.sig_set_state.emit("IDLE", "I couldn't hear you.")
                 time.sleep(1.8)
                 self.sig_set_state.emit("IDLE", "Ready • Hold Ctrl+Alt to speak")
+                self._schedule_auto_dismiss(1800)
                 return
 
             self._current_transcript = transcript
@@ -354,6 +489,7 @@ class LifecycleManager(QObject):
 
     def execute_command_text(self, transcript: str):
         """Processes and executes a command string through the router."""
+        self._cancel_auto_dismiss()
         self.sig_set_state.emit("PROCESSING", f"'{transcript}'")
         self.sig_clear_pipeline.emit()
 
@@ -442,12 +578,6 @@ class LifecycleManager(QObject):
                 step_count += 1
                 self.sig_action_step.emit(f"Step {step_count}: {next_step}", "⚡", True)
 
-        # Immediately display clean text in top notch HUD
-        if result.is_success():
-            self.sig_set_state.emit("SPEAKING", hud_text)
-        else:
-            self.sig_set_state.emit("ERROR", self._clean_for_display(status_text))
-
         # Feed turn into Chat Composer Thread
         try:
             self.sidebar.add_chat_turn(transcript, hud_text)
@@ -466,22 +596,25 @@ class LifecycleManager(QObject):
                 result_summary=status_text,
             )
 
-        # Immediate Google Assistant-style voice response:
-        # Speak the first 1-2 punchy sentences so TTS starts instantly without buffering delay,
-        # while hud_text displays the complete visual card for reading.
-        raw_speech = status_text
-        import re
-        sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", raw_speech) if s.strip()]
-        if len(sentences) > 2:
-            spoken_text = " ".join(sentences[:2])
-        else:
-            spoken_text = raw_speech
+        # Immediate synchronized voice response:
+        # What is displayed or returned as the spoken message is read aloud without delay!
+        spoken_text = status_text or hud_text
+
+        def on_tts_start():
+            if result.is_success():
+                self.sig_set_state.emit("SPEAKING", hud_text)
+            else:
+                self.sig_set_state.emit("ERROR", self._clean_for_display(status_text))
 
         def on_tts_finish():
             # Keep notch open so the user can read the complete response
+            self.notch.set_voice_active(False)
             self.sig_set_state.emit("IDLE", hud_text)
 
-        tts_engine.speak(spoken_text, on_finish=on_tts_finish)
+        # Display processing briefly while audio stream initializes, then smoothly display on audio start
+        self.sig_set_state.emit("PROCESSING", "Responding...")
+        self.notch.set_voice_active(True)
+        tts_engine.speak(spoken_text, on_start=on_tts_start, on_finish=on_tts_finish)
 
     def _on_action_confirmed(self):
         if self._pending_intent:
@@ -500,17 +633,10 @@ class LifecycleManager(QObject):
         self._process_result(intent, result, str(intent.action))
 
     def _on_action_cancelled(self):
+        tts_engine.stop()
+        self.notch.set_voice_active(False)
         self._pending_confirmation = False
         self._pending_intent = None
         self.sig_set_state.emit("IDLE", "Action cancelled.")
         QTimer.singleShot(1000, self.sig_disappear.emit)
         QTimer.singleShot(1200, lambda: self.sig_set_state.emit("IDLE", "Ready • Hold Ctrl+Alt to speak"))
-
-    def _on_live_toggled(self, is_live: bool):
-        if is_live:
-            print("[Lifecycle] Starting Gemini Live mode session.")
-            self.live_session.start()
-        else:
-            print("[Lifecycle] Stopping Gemini Live mode session.")
-            self.live_session.stop()
-            self.sig_set_state.emit("IDLE", "Ready • Hold Ctrl+Alt to speak")

@@ -23,7 +23,7 @@ class BrowserTool(BaseTool):
             return ToolResult(
                 status="SUCCESS",
                 message="Opening YouTube for you.",
-                data={"url": url, "full_details": "🌐 YouTube opened in browser."},
+                data={"url": url, "full_details": "YouTube opened in browser."},
             )
 
         elif action == "play_youtube":
@@ -35,7 +35,7 @@ class BrowserTool(BaseTool):
             return ToolResult(
                 status="SUCCESS",
                 message=f"Playing {query} on YouTube.",
-                data={"query": query, "url": url, "full_details": f"▶️ Playing: {query}\nURL: {url}"},
+                data={"query": query, "url": url, "full_details": f"Playing: {query}"},
             )
 
         elif action == "search_youtube":
@@ -47,7 +47,7 @@ class BrowserTool(BaseTool):
             return ToolResult(
                 status="SUCCESS",
                 message=f"Searching YouTube for {query}.",
-                data={"query": query, "url": url, "full_details": f"🔍 YouTube Search: {query}"},
+                data={"query": query, "url": url, "full_details": f"YouTube Search: {query}"},
             )
 
         elif action == "search_google":
@@ -60,7 +60,7 @@ class BrowserTool(BaseTool):
             return ToolResult(
                 status="SUCCESS",
                 message=f"Searching Google for {query}.",
-                data={"query": query, "url": url, "full_details": f"🔍 Google Search: {query}"},
+                data={"query": query, "url": url, "full_details": f"Google Search: {query}"},
             )
 
         elif action == "lucky_search":
@@ -74,7 +74,7 @@ class BrowserTool(BaseTool):
             return ToolResult(
                 status="SUCCESS",
                 message=f"Opening {query}.",
-                data={"query": query, "url": url, "full_details": f"🌐 Opening: {query}"},
+                data={"query": query, "url": url, "full_details": f"Opening: {query}"},
             )
         elif action == "search_amazon":
             query = kwargs.get("query", "")
@@ -86,7 +86,7 @@ class BrowserTool(BaseTool):
             return ToolResult(
                 status="SUCCESS",
                 message=f"Searching Amazon for {query}.",
-                data={"query": query, "url": url, "full_details": f"🛒 Amazon Search: {query}"},
+                data={"query": query, "url": url, "full_details": f"Amazon Search: {query}"},
             )
 
         elif action == "search_flipkart":
@@ -99,7 +99,7 @@ class BrowserTool(BaseTool):
             return ToolResult(
                 status="SUCCESS",
                 message=f"Searching Flipkart for {query}.",
-                data={"query": query, "url": url, "full_details": f"🛍️ Flipkart Search: {query}"},
+                data={"query": query, "url": url, "full_details": f"Flipkart Search: {query}"},
             )
 
         elif action == "search_github":
@@ -112,7 +112,7 @@ class BrowserTool(BaseTool):
             return ToolResult(
                 status="SUCCESS",
                 message=f"Searching GitHub for {query}.",
-                data={"query": query, "url": url, "full_details": f"🐙 GitHub Search: {query}"},
+                data={"query": query, "url": url, "full_details": f"GitHub Search: {query}"},
             )
 
         elif action == "search_reddit":

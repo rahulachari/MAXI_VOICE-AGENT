@@ -199,7 +199,12 @@ class LocalSemanticEngine:
                 confirmation_prompt="I am JARVIS, your desktop voice operating system assistant. I can open apps, search the web, send messages, write emails, control your system, and much more.",
             )
 
-        # 3. System Time & Date
+        # 3. System Time, Date & Weather
+        if re.search(r"\b(?:what(?:'s|\s+is)\s+(?:the\s+)?weather|weather\s+today|weather\s+forecast|how\s+is\s+the\s+weather)\b", text, re.IGNORECASE):
+            loc_match = re.search(r"\bweather\s+(?:in|for|at)\s+([a-zA-Z\s]+)", text, re.IGNORECASE)
+            location = loc_match.group(1).strip() if loc_match else ""
+            return Intent(category=IntentCategory.WEATHER, action="get_weather", params={"location": location})
+
         if re.search(r"(?:what(?:'s|\s+is)\s+the\s+time|tell\s+me\s+the\s+time|what\s+time\s+is\s+it|time\s+now|current\s+time)", text):
             return Intent(
                 category=IntentCategory.TIME,
@@ -624,6 +629,9 @@ class LocalSemanticEngine:
         if generic_open_match:
             site_query = generic_open_match.group(1).strip()
             if site_query not in ["the", "my", "a"]:
+                common_apps = ["notepad", "calculator", "calc", "cmd", "terminal", "powershell", "settings", "word", "excel", "powerpoint", "vscode", "code", "paint", "chrome", "edge", "spotify"]
+                if site_query.lower() in common_apps:
+                    return Intent(category=IntentCategory.APP_LAUNCH, target=site_query.title(), action="launch_app", params={"app_name": site_query.lower()})
                 # Exclude local folders handled earlier, though they are usually caught by earlier regexes
                 if site_query not in ["downloads", "screenshots", "desktop", "documents", "pictures", "videos", "music", "settings", "file explorer", "whatsapp", "this pc"]:
                     return Intent(category=IntentCategory.WEB_NAVIGATION, target="Browser", action="lucky_search", params={"query": site_query})
@@ -851,39 +859,30 @@ class LocalSemanticEngine:
         # ===================================================================
 
         if "calendar" in text:
-            if text in ["open calendar", "show my calendar", "calendar", "launch calendar"]:
+            if text in ["open calendar", "show my calendar", "calendar", "launch calendar", "open my calendar", "open google calendar"]:
                 return Intent(category=IntentCategory.CALENDAR, action="open_calendar")
 
-            # Handle commands like "open calendar and remind me at 9:00 I need to go for ration"
-            time_match = re.search(r"\b(?:at|for)\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\b", text)
-            event_time = time_match.group(1) if time_match else "9:00 AM"
+            from jarvis.tools.calendar_tool import CalendarTool
+            cal_tool = CalendarTool()
+            clean_title, extracted_date, extracted_time = cal_tool._clean_event_title(text)
 
-            # Extract event title by stripping all command prefixes
-            title = text
-            title = re.sub(r"^(?:please\s+)?(?:open\s+(?:my\s+)?calendar\s+and\s+)?", "", title)
-            title = re.sub(r"^(?:set\s+(?:a\s+)?(?:reminder|event|meeting)\s+(?:for\s+)?)", "", title)
-            title = re.sub(r"^(?:remind\s+me\s+(?:to\s+|about\s+|for\s+)?)", "", title)
-            title = re.sub(r"^(?:add\s+(?:an?\s+)?(?:event|reminder|task)\s+(?:to\s+|for\s+)?)", "", title)
-            title = re.sub(r"^(?:schedule\s+(?:a\s+)?)", "", title)
-            # Remove time reference from title
-            if time_match:
-                title = re.sub(r"\b(?:at|for)\s+" + re.escape(time_match.group(1)) + r"\b", "", title)
-            # Remove remaining prefixes like "I need to go for", "to", "that"
-            title = re.sub(r"^(?:to\s+|that\s+|i\s+need\s+to\s+(?:go\s+(?:for\s+)?)?)", "", title).strip()
-            title = re.sub(r"\s+", " ", title).strip()
-            if not title:
-                title = "Reminder"
+            time_str = extracted_time or "9:00 AM"
+            if extracted_date:
+                date_str = extracted_date.strftime("%Y-%m-%d")
+                date_prompt = extracted_date.strftime("%A, %B %d")
+            else:
+                date_str = "today"
+                date_prompt = "today"
 
-            title_clean = title.strip().capitalize()
             return Intent(
                 category=IntentCategory.CALENDAR,
                 action="create_event",
                 params={
-                    "title": title_clean,
-                    "time": event_time,
-                    "date": "today",
+                    "title": clean_title,
+                    "time": time_str,
+                    "date": date_str,
                 },
-                confirmation_prompt=f"I've opened your calendar and set a reminder for {title_clean} at {event_time}."
+                confirmation_prompt=f"I've opened your calendar and scheduled '{clean_title}' for {date_prompt} at {time_str}."
             )
 
         cal_meeting_match = re.search(r"schedule\s+a\s+meeting\s+with\s+(.+?)\s+on\s+(.+?)(?:\s+at\s+(.+))?$", text)

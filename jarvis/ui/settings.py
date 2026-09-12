@@ -113,19 +113,35 @@ class SettingsDialog(QDialog):
 
         l.addWidget(QLabel("Primary AI Provider:"))
         self.combo_provider = QComboBox()
-        self.combo_provider.addItems(["groq", "openai", "gemini", "local"])
-        self.combo_provider.setCurrentText(config.get("ai_provider", "groq"))
+        self.combo_provider.addItems(["gemini", "groq", "openai", "local"])
+        self.combo_provider.setCurrentText(config.get("ai_provider", "gemini"))
         l.addWidget(self.combo_provider)
 
-        l.addWidget(QLabel("AI Model Name:"))
-        self.input_model = QLineEdit()
-        self.input_model.setText(config.get("ai_model", "openai/gpt-oss-120b"))
-        l.addWidget(self.input_model)
+        l.addWidget(QLabel("Google Gemini API Key:"))
+        self.input_gemini_key = QLineEdit()
+        self.input_gemini_key.setEchoMode(QLineEdit.Password)
+        self.input_gemini_key.setText(config.get("gemini_api_key", ""))
+        self.input_gemini_key.setPlaceholderText("AIzaSy...")
+        l.addWidget(self.input_gemini_key)
 
-        l.addWidget(QLabel("Groq API Key:"))
+        l.addWidget(QLabel("Default Home City / Weather Location:"))
+        self.input_default_city = QLineEdit()
+        self.input_default_city.setText(config.get("default_city", "Chittoor"))
+        self.input_default_city.setPlaceholderText("e.g. Chittoor, Tirupati, Bangalore, Mumbai...")
+        l.addWidget(self.input_default_city)
+
+        l.addWidget(QLabel("Weather API Key (OpenWeatherMap, Optional):"))
+        self.input_weather_key = QLineEdit()
+        self.input_weather_key.setEchoMode(QLineEdit.Password)
+        self.input_weather_key.setText(config.get("weather_api_key", ""))
+        self.input_weather_key.setPlaceholderText("Optional: Leave empty for free global live satellite reports")
+        l.addWidget(self.input_weather_key)
+
+        l.addWidget(QLabel("Groq API Key (Ultra-Low-Latency Cloud Reasoning & STT):"))
         self.input_groq_key = QLineEdit()
         self.input_groq_key.setEchoMode(QLineEdit.Password)
         self.input_groq_key.setText(config.get("groq_api_key", ""))
+        self.input_groq_key.setPlaceholderText("gsk_...")
         l.addWidget(self.input_groq_key)
 
         l.addStretch()
@@ -137,21 +153,42 @@ class SettingsDialog(QDialog):
         l.setContentsMargins(16, 16, 16, 16)
         l.setSpacing(12)
 
+        l.addWidget(QLabel("AI Voice (Humanized Studio Voice):"))
+        self.combo_voice = QComboBox()
+        voices = [
+            ("Lyra (Gemini Lady Voice - Humanized Studio)", "lyra"),
+            ("Jenny (US Warm Natural Female)", "en-US-JennyNeural"),
+            ("Aria (US Professional Female)", "en-US-AriaNeural"),
+            ("Sonia (UK Elegant Female)", "en-GB-SoniaNeural"),
+            ("Ava (US Expressive Female)", "en-US-AvaNeural"),
+            ("Brian (UK Articulate Male)", "en-US-BrianNeural"),
+        ]
+        curr_v = str(config.get("voice_name", "lyra")).lower()
+        for idx, (label, val) in enumerate(voices):
+            self.combo_voice.addItem(label, val)
+            if val.lower() == curr_v or (val == "lyra" and "lyra" in curr_v):
+                self.combo_voice.setCurrentIndex(idx)
+        l.addWidget(self.combo_voice)
+
         l.addWidget(QLabel("Speech-To-Text Provider:"))
         self.combo_stt = QComboBox()
-        self.combo_stt.addItems(["groq_whisper", "google"])
-        self.combo_stt.setCurrentText(config.get("stt_provider", "groq_whisper"))
+        self.combo_stt.addItems(["google", "groq_whisper"])
+        self.combo_stt.setCurrentText(config.get("stt_provider", "google"))
         l.addWidget(self.combo_stt)
 
         l.addWidget(QLabel("Speech Rate (Words per minute):"))
         self.slider_rate = QSlider(Qt.Horizontal)
         self.slider_rate.setRange(120, 240)
-        self.slider_rate.setValue(config.get("tts_rate", 185))
+        self.slider_rate.setValue(config.get("tts_rate", 190))
         l.addWidget(self.slider_rate)
 
         # Test Voice Button
-        btn_test_tts = QPushButton("Test Voice Synthesis")
-        btn_test_tts.clicked.connect(lambda: tts_engine.speak("JARVIS voice synthesis operational."))
+        btn_test_tts = QPushButton("Test Voice Output")
+        def _test_speech():
+            chosen = self.combo_voice.currentData() or "lyra"
+            tts_engine._voice = chosen
+            tts_engine.speak("Hello Rahul, I am your personal AI assistant. How may I assist you?")
+        btn_test_tts.clicked.connect(_test_speech)
         l.addWidget(btn_test_tts)
 
         l.addStretch()
@@ -209,7 +246,9 @@ class SettingsDialog(QDialog):
 
     def _save_settings(self):
         config.set("ai_provider", self.combo_provider.currentText(), auto_save=False)
-        config.set("ai_model", self.input_model.text(), auto_save=False)
+        config.set("default_city", self.input_default_city.text().strip(), auto_save=False)
+        config.set("gemini_api_key", self.input_gemini_key.text().strip(), auto_save=False)
+        config.set("weather_api_key", self.input_weather_key.text().strip(), auto_save=False)
         config.set("groq_api_key", self.input_groq_key.text(), auto_save=False)
         config.set("stt_provider", self.combo_stt.currentText(), auto_save=False)
         config.set("tts_rate", self.slider_rate.value(), auto_save=False)

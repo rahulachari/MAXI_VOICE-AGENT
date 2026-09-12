@@ -5,6 +5,7 @@ asynchronous worker playback, and instant barge-in / speech cancellation.
 """
 
 import os
+import re
 import asyncio
 import tempfile
 import threading
@@ -22,28 +23,29 @@ try:
 except Exception as e:
     print(f"[TTS] Pygame mixer init: {e}")
 
-# Definitive intelligent personal assistant voice (articulate, natural, confident)
-DEFAULT_NEURAL_VOICE = "en-US-BrianNeural"
+# Definitive intelligent personal assistant voice (warm, natural, humanized female)
+DEFAULT_NEURAL_VOICE = "en-US-JennyNeural"
 
 # Available neural voices
 AVAILABLE_VOICES = {
-    "Brian (JARVIS Agent, Articulate)": "en-US-BrianNeural",
-    "Guy (US, Natural Male)": "en-US-GuyNeural",
-    "Christopher (US, Deep Male)": "en-US-ChristopherNeural",
-    "Sonia (UK, Elegant Female)": "en-GB-SoniaNeural",
+    "Lyra / Jenny (Studio Lady Voice, Warm & Natural)": "en-US-JennyNeural",
     "Aria (US, Professional Female)": "en-US-AriaNeural",
-    "Jenny (US, Friendly Female)": "en-US-JennyNeural",
+    "Sonia (UK, Elegant Female)": "en-GB-SoniaNeural",
+    "Ava (US, Expressive Female)": "en-US-AvaNeural",
+    "Brian (UK, Articulate Male)": "en-US-BrianNeural",
+    "Guy (US, Natural Male)": "en-US-GuyNeural",
 }
 
 VOICE_MAP = {
-    "brian": "en-US-BrianNeural",
-    "jarvis": "en-US-BrianNeural",
-    "lyra": "en-US-BrianNeural",
-    "guy": "en-US-GuyNeural",
-    "christopher": "en-US-ChristopherNeural",
-    "sonia": "en-GB-SoniaNeural",
-    "aria": "en-US-AriaNeural",
+    "lyra": "en-US-JennyNeural",
+    "gemini": "en-US-JennyNeural",
+    "gemini_lyra": "en-US-JennyNeural",
     "jenny": "en-US-JennyNeural",
+    "aria": "en-US-AriaNeural",
+    "sonia": "en-GB-SoniaNeural",
+    "ava": "en-US-AvaNeural",
+    "brian": "en-US-BrianNeural",
+    "guy": "en-US-GuyNeural",
 }
 
 
@@ -59,12 +61,13 @@ class TextToSpeechEngine:
         self._lock = threading.Lock()
         self._is_speaking = False
         self._current_thread: Optional[threading.Thread] = None
+        self._lyra_cooldown_until = 0.0
 
-        raw_v = str(config.get("voice_name", "Brian")).strip().lower()
+        raw_v = str(config.get("voice_name", "lyra")).strip().lower()
         if "neural" in raw_v:
             self._voice = config.get("voice_name")
         else:
-            self._voice = VOICE_MAP.get(raw_v, DEFAULT_NEURAL_VOICE)
+            self._voice = VOICE_MAP.get(raw_v, "lyra")
 
         self._sapi5_engine = None
 
@@ -87,9 +90,11 @@ class TextToSpeechEngine:
                 pass
         self._is_speaking = False
 
-    def speak(self, text: str, on_finish: Optional[Callable[[], None]] = None):
+    def speak(self, text: str, on_start: Optional[Callable[[], None]] = None, on_finish: Optional[Callable[[], None]] = None):
         clean_text = clean_spoken_text(text)
         if not clean_text:
+            if on_start:
+                on_start()
             if on_finish:
                 on_finish()
             return
@@ -106,17 +111,45 @@ class TextToSpeechEngine:
                 self._stop_event.clear()
                 self._is_speaking = True
 
+                voice_choice = str(self._voice).lower()
+                engine_pref = str(config.get("tts_engine", "neural")).lower()
                 success = False
 
-                # 1. High-definition neural agent voice (fast, natural, articulate)
-                try:
-                    success = self._speak_neural(clean_text)
-                except Exception as e:
-                    print(f"[TTS] Neural TTS failed, trying fallback: {e}")
+                # 1. Authentic Google Gemini Lyra Lady Voice (only if not on rate-limit cooldown)
+                can_try_lyra = (
+                    ("lyra" in voice_choice or engine_pref in ["lyra", "gemini_lyra", "gemini"])
+                    and time.time() > self._lyra_cooldown_until
+                )
+                if can_try_lyra:
+                    try:
+                        success = self._speak_gemini_lyra(clean_text, on_start=on_start)
+                    except Exception as e:
+                        err_str = str(e)
+                        if "429" in err_str or "quota" in err_str.lower():
+                            print("[TTS] Gemini Lyra rate-limited (429). Fast switching to JennyNeural for session.")
+                            self._lyra_cooldown_until = time.time() + 86400.0
+                        else:
+                            print(f"[TTS] Gemini Lyra synthesis error: {e}")
+                            self._lyra_cooldown_until = time.time() + 1800.0
+                        success = False
 
-                # 2. Fallback to offline SAPI5 only if neural voice is unavailable
+                # 2. High-definition natural neural female voice (Edge-TTS sentence-pipelined)
                 if not success and not self._stop_event.is_set():
-                    self._speak_sapi5(clean_text)
+                    try:
+                        target_voice = self._voice if ("lyra" not in voice_choice and "neural" in voice_choice) else "en-US-JennyNeural"
+                        success = self._speak_neural(clean_text, voice=target_voice, on_start=on_start)
+                    except Exception as e:
+                        print(f"[TTS] Neural TTS failed: {e}")
+                        success = False
+
+                # 3. Offline SAPI5 as last resort only if completely offline
+                if not success and not self._stop_event.is_set():
+                    print("[TTS] Offline fallback: SAPI5 female voice...")
+                    try:
+                        self._speak_sapi5(clean_text, on_start=on_start)
+                        success = True
+                    except Exception as e:
+                        print(f"[TTS] SAPI5 failed: {e}")
 
                 self._is_speaking = False
                 if on_finish and not self._stop_event.is_set():
@@ -125,7 +158,7 @@ class TextToSpeechEngine:
         self._current_thread = threading.Thread(target=_worker, daemon=True)
         self._current_thread.start()
 
-    def _speak_gemini_lyra(self, text: str) -> bool:
+    def _speak_gemini_lyra(self, text: str, on_start: Optional[Callable[[], None]] = None) -> bool:
         """Synthesizes speech using Google Gemini Lyra voice and plays via pygame mixer."""
         gemini_key = config.get("gemini_api_key")
         if not gemini_key:
@@ -188,6 +221,11 @@ class TextToSpeechEngine:
 
         pygame.mixer.music.load(temp_wav)
         pygame.mixer.music.play()
+        if on_start and not self._stop_event.is_set():
+            try:
+                on_start()
+            except Exception:
+                pass
 
         while pygame.mixer.music.get_busy():
             if self._stop_event.is_set():
@@ -203,46 +241,170 @@ class TextToSpeechEngine:
         _safe_cleanup(temp_wav)
         return True
 
-    def _speak_neural(self, text: str) -> bool:
-        """Synthesizes speech using edge-tts and plays via pygame mixer."""
-        temp_path = os.path.join(tempfile.gettempdir(), f"jarvis_speech_{int(time.time()*1000)}.mp3")
-
-        async def _generate():
-            voice = self._voice
-            rate = config.get("tts_rate", 190)
-            # Map rate: 190 → +5% (slightly faster for smart/professional tone)
-            rate_percent = f"{int((rate - 180) / 1.8):+d}%"
-            communicate = edge_tts.Communicate(text, voice, rate=rate_percent)
-            await communicate.save(temp_path)
-
-        asyncio.run(_generate())
-
-        if self._stop_event.is_set():
-            _safe_cleanup(temp_path)
+    def _speak_neural(self, text: str, voice: Optional[str] = None, on_start: Optional[Callable[[], None]] = None) -> bool:
+        """Synthesizes speech using edge-tts with sentence-pipelined instant playback.
+        Synthesizes the first sentence immediately (~200ms), starts audio playback right away,
+        and pre-buffers subsequent sentences concurrently in background threads."""
+        sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', text.strip()) if s.strip()]
+        if not sentences:
             return False
 
-        if not os.path.exists(temp_path) or os.path.getsize(temp_path) == 0:
-            return False
+        chosen_voice = voice or self._voice
+        if not chosen_voice or "lyra" in str(chosen_voice).lower() or "gemini" in str(chosen_voice).lower():
+            chosen_voice = "en-US-JennyNeural"
 
-        pygame.mixer.music.load(temp_path)
-        pygame.mixer.music.play()
+        rate = config.get("tts_rate", 190)
+        rate_percent = f"{int((rate - 180) / 1.8):+d}%"
 
-        while pygame.mixer.music.get_busy():
-            if self._stop_event.is_set():
-                pygame.mixer.music.stop()
-                pygame.mixer.music.unload()
-                break
-            time.sleep(0.02)
+        temp_files = []
+
+        def _cleanup():
+            for f in temp_files:
+                _safe_cleanup(f)
 
         try:
-            pygame.mixer.music.unload()
-        except Exception:
-            pass
-        _safe_cleanup(temp_path)
+            # Single sentence or short text: synthesize directly
+            if len(sentences) == 1 or len(text.split()) < 22:
+                temp_path = os.path.join(tempfile.gettempdir(), f"jarvis_speech_{int(time.time()*1000)}.mp3")
+                temp_files.append(temp_path)
 
-        return True
+                async def _generate():
+                    communicate = edge_tts.Communicate(text, chosen_voice, rate=rate_percent)
+                    await communicate.save(temp_path)
 
-    def _speak_sapi5(self, text: str):
+                asyncio.run(_generate())
+
+                if self._stop_event.is_set():
+                    _cleanup()
+                    return False
+
+                if not os.path.exists(temp_path) or os.path.getsize(temp_path) == 0:
+                    _cleanup()
+                    return False
+
+                pygame.mixer.music.load(temp_path)
+                pygame.mixer.music.play()
+                if on_start and not self._stop_event.is_set():
+                    try:
+                        on_start()
+                    except Exception:
+                        pass
+
+                while pygame.mixer.music.get_busy():
+                    if self._stop_event.is_set():
+                        pygame.mixer.music.stop()
+                        pygame.mixer.music.unload()
+                        break
+                    time.sleep(0.02)
+
+                try:
+                    pygame.mixer.music.unload()
+                except Exception:
+                    pass
+                _cleanup()
+                return True
+
+            # Multi-sentence pipeline: synthesize Sentence 1 and start playing immediately
+            import queue
+            first_sentence_q = queue.Queue()
+
+            def _synthesize_single(s_text, out_path, q_to_signal=None):
+                try:
+                    async def _run():
+                        comm = edge_tts.Communicate(s_text, chosen_voice, rate=rate_percent)
+                        await comm.save(out_path)
+                    asyncio.run(_run())
+                    if q_to_signal:
+                        success = os.path.exists(out_path) and os.path.getsize(out_path) > 0
+                        q_to_signal.put(success)
+                except Exception as err:
+                    print(f"[TTS Pipeline] Sentence synthesis failed: {err}")
+                    if q_to_signal:
+                        q_to_signal.put(False)
+
+            # 1. Immediately launch background synthesis for all subsequent sentences in parallel
+            remaining_paths = []
+            for i, sent in enumerate(sentences[1:], start=1):
+                pi = os.path.join(tempfile.gettempdir(), f"jarvis_chunk_{i}_{int(time.time()*1000)}.mp3")
+                temp_files.append(pi)
+                t = threading.Thread(target=_synthesize_single, args=(sent, pi, None), daemon=True)
+                t.start()
+                remaining_paths.append(pi)
+
+            # 2. Synthesize sentence 0 first to produce sound ASAP!
+            p0 = os.path.join(tempfile.gettempdir(), f"jarvis_chunk_0_{int(time.time()*1000)}.mp3")
+            temp_files.append(p0)
+            _synthesize_single(sentences[0], p0, first_sentence_q)
+
+            try:
+                s0_ok = first_sentence_q.get(timeout=3.5)
+            except Exception:
+                s0_ok = False
+
+            if not s0_ok or self._stop_event.is_set():
+                _cleanup()
+                return False
+
+            # Start playback of Sentence 0 immediately!
+            pygame.mixer.music.load(p0)
+            pygame.mixer.music.play()
+            if on_start and not self._stop_event.is_set():
+                try:
+                    on_start()
+                except Exception:
+                    pass
+
+            # 3. Seamlessly play subsequent sentences as each finishes
+            for pi in remaining_paths:
+                while pygame.mixer.music.get_busy():
+                    if self._stop_event.is_set():
+                        pygame.mixer.music.stop()
+                        pygame.mixer.music.unload()
+                        _cleanup()
+                        return False
+                    time.sleep(0.02)
+
+                if self._stop_event.is_set():
+                    _cleanup()
+                    return False
+
+                # Ensure next sentence audio is saved (already synthesizing in background)
+                wait_start = time.time()
+                while (not os.path.exists(pi) or os.path.getsize(pi) == 0) and (time.time() - wait_start < 4.0):
+                    if self._stop_event.is_set():
+                        _cleanup()
+                        return False
+                    time.sleep(0.02)
+
+                if os.path.exists(pi) and os.path.getsize(pi) > 0 and not self._stop_event.is_set():
+                    try:
+                        pygame.mixer.music.unload()
+                    except Exception:
+                        pass
+                    pygame.mixer.music.load(pi)
+                    pygame.mixer.music.play()
+
+            # Wait for final sentence playback to conclude
+            while pygame.mixer.music.get_busy():
+                if self._stop_event.is_set():
+                    pygame.mixer.music.stop()
+                    pygame.mixer.music.unload()
+                    break
+                time.sleep(0.02)
+
+            try:
+                pygame.mixer.music.unload()
+            except Exception:
+                pass
+            _cleanup()
+            return True
+
+        except Exception as e:
+            print(f"[TTS Pipeline] Error: {e}")
+            _cleanup()
+            return False
+
+    def _speak_sapi5(self, text: str, on_start: Optional[Callable[[], None]] = None):
         """Offline fallback using Windows SAPI5 with female voice preference."""
         if self._stop_event.is_set():
             return
@@ -262,6 +424,12 @@ class TextToSpeechEngine:
                 if "zira" in v.name.lower() or "female" in v.name.lower():
                     engine.setProperty("voice", v.id)
                     break
+
+            if on_start and not self._stop_event.is_set():
+                try:
+                    on_start()
+                except Exception:
+                    pass
 
             # Smart sentence splitting: preserve ? and ! for natural intonation
             import re

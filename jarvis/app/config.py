@@ -22,17 +22,19 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "groq_api_key": os.getenv("GROQ_API_KEY", ""),
     "openai_api_key": os.getenv("OPENAI_API_KEY", ""),
     "gemini_api_key": os.getenv("GEMINI_API_KEY", ""),
+    "weather_api_key": os.getenv("WEATHER_API_KEY", os.getenv("OPENWEATHER_API_KEY", "")),
     "stt_provider": "groq_whisper" if os.getenv("GROQ_API_KEY") else "google",
-    "tts_engine": "sapi5",
+    "tts_engine": "neural",  # 'neural' (Gemini Lyra / Edge-TTS Jenny/Aria)
     "tts_rate": int(os.getenv("VOICE_RATE", "190")),
     "tts_volume": float(os.getenv("VOICE_VOLUME", "1.0")),
-    "voice_name": "en-GB-SoniaNeural",
+    "voice_name": "lyra",  # 'lyra' (Gemini Lady Voice), 'jenny', 'aria', 'sonia'
     "save_history": True,
     "confirm_destructive": True,
     "active_mode": "agent",  # 'agent', 'dictation', 'edit'
     "sound_effects": True,
     "notch_always_visible": False,
     "memory_enabled": True,
+    "default_city": os.getenv("DEFAULT_CITY", "Chittoor"),
     "calendar_default_duration": 30,
     "task_notifications": True,
 }
@@ -61,7 +63,7 @@ class ConfigManager:
             self._config["ai_provider"] = os.getenv("AI_PROVIDER")
         if os.getenv("AI_MODEL"):
             self._config["ai_model"] = os.getenv("AI_MODEL")
-        if not self._config.get("groq_api_key") and os.getenv("GROQ_API_KEY"):
+        if os.getenv("GROQ_API_KEY"):
             self._config["groq_api_key"] = os.getenv("GROQ_API_KEY")
 
         if self._config.get("groq_api_key") and self._config.get("stt_provider") == "google":

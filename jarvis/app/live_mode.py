@@ -32,19 +32,21 @@ class LiveSessionManager:
     def start(self):
         self.is_active = True
         self.history = []
-        self.on_state_change("IDLE", "Live Mode active. Speak naturally!")
+        self.on_state_change("LISTENING", "Live Mode active • Speak naturally!")
         # Trigger the first listen
         self.start_listening()
 
     def stop(self):
         self.is_active = False
-        self.on_state_change("IDLE", "Live Mode ended.")
+        if tts_engine.is_speaking():
+            tts_engine.stop()
+        self.on_state_change("IDLE", "Ready • Hold Ctrl+Alt to speak")
 
     def process_turn(self, transcript: str):
         if not self.is_active:
             return
 
-        self.on_state_change("PROCESSING", f"You: {transcript}")
+        self.on_state_change("PROCESSING", f"'{transcript}'")
         
         def _worker():
             try:
@@ -59,8 +61,8 @@ class LiveSessionManager:
                     return
                 
                 contents = []
-                # Inject rolling history (last 4 turns)
-                for turn in self.history[-4:]:
+                # Inject rolling history (last 6 turns)
+                for turn in self.history[-6:]:
                     contents.append(turn)
                     
                 # Current user turn
@@ -90,7 +92,7 @@ class LiveSessionManager:
                             "You receive real-time snapshots of what is right under their cursor, including UI element text. "
                             "RULES:\n"
                             "1. Talk like a real person, not a robot or assistant. Never say 'How can I help', 'As an AI', or mission jargon.\n"
-                            "2. Keep answers concise and snappy: 1 to 2 spoken sentences (under 30 words total) so chat is fast.\n"
+                            "2. Keep answers concise and snappy: 1 to 2 spoken sentences (under 35 words total) so chat is fast.\n"
                             "3. When the user asks 'what is this', 'read this', or points at anything on screen, directly explain what is at their cursor.\n"
                             "4. No markdown, no asterisks, no bullets. Plain spoken conversation only."
                         )
@@ -100,7 +102,7 @@ class LiveSessionManager:
                 payload = {
                     "contents": contents,
                     "systemInstruction": sys_instruction,
-                    "generationConfig": {"maxOutputTokens": 120, "temperature": 0.4}
+                    "generationConfig": {"maxOutputTokens": 140, "temperature": 0.4}
                 }
                 
                 data_bytes = json.dumps(payload).encode("utf-8")
@@ -138,17 +140,24 @@ class LiveSessionManager:
                 self.history.append({"role": "user", "parts": [{"text": transcript}]})
                 self.history.append({"role": "model", "parts": [{"text": clean_ans}]})
                 
-                # 3. Speak and loop
+                # 3. Speak and loop strictly AFTER speech completes
+                def _on_speech_finished_loop():
+                    if self.is_active:
+                        self.on_state_change("LISTENING", "Listening...")
+                        self.start_listening()
+                    else:
+                        self.on_state_change("IDLE", "Ready • Hold Ctrl+Alt to speak")
+
                 self.on_state_change("SPEAKING", clean_ans)
-                tts_engine.speak(clean_ans)
+                tts_engine.speak(clean_ans, on_finish=_on_speech_finished_loop)
                 
             except Exception as e:
                 log_layer(1, f"Live Mode error: {e}")
                 self.on_state_change("IDLE", "Sorry, I missed that. Say again?")
-                
-            finally:
                 if self.is_active:
-                    self.on_state_change("IDLE", "Listening...")
+                    import time
+                    time.sleep(1.0)
+                    self.on_state_change("LISTENING", "Listening...")
                     self.start_listening()
 
         threading.Thread(target=_worker, daemon=True).start()

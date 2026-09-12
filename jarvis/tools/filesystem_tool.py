@@ -139,40 +139,62 @@ class FilesystemTool(BaseTool):
             return ToolResult(status="FAILED", message=f"Failed to open file: {e}", error=str(e))
 
     def open_folder(self, folder: str) -> ToolResult:
-        clean_name = folder.lower().strip()
+        import re
+        raw_input = (folder or "").strip()
+        clean_name = raw_input.lower().strip()
 
-        # Well-known system folders (supporting singular, plural, and natural speech variants)
-        folder_map = {
-            "downloads": Path.home() / "Downloads",
-            "download": Path.home() / "Downloads",
-            "documents": Path.home() / "Documents",
-            "document": Path.home() / "Documents",
-            "pictures": Path.home() / "Pictures",
-            "picture": Path.home() / "Pictures",
-            "photos": Path.home() / "Pictures",
-            "photo": Path.home() / "Pictures",
-            "images": Path.home() / "Pictures",
-            "image": Path.home() / "Pictures",
-            "screenshots": Path.home() / "Pictures" / "Screenshots",
-            "screenshot": Path.home() / "Pictures" / "Screenshots",
-            "videos": (Path.home() / "Videos" / "videos") if (Path.home() / "Videos" / "videos").exists() else (Path.home() / "Videos"),
-            "video": (Path.home() / "Videos" / "videos") if (Path.home() / "Videos" / "videos").exists() else (Path.home() / "Videos"),
-            "movies": (Path.home() / "Videos" / "movies") if (Path.home() / "Videos" / "movies").exists() else (Path.home() / "Videos"),
-            "movie": (Path.home() / "Videos" / "movies") if (Path.home() / "Videos" / "movies").exists() else (Path.home() / "Videos"),
-            "films": (Path.home() / "Videos" / "movies") if (Path.home() / "Videos" / "movies").exists() else (Path.home() / "Videos"),
-            "film": (Path.home() / "Videos" / "movies") if (Path.home() / "Videos" / "movies").exists() else (Path.home() / "Videos"),
-            "music": Path.home() / "Music",
-            "songs": Path.home() / "Music",
-            "song": Path.home() / "Music",
-            "audio": Path.home() / "Music",
-            "desktop": Path.home() / "Desktop",
-            "home": Path.home(),
-            "appdata": Path.home() / "AppData",
-            "onedrive": Path.home() / "OneDrive",
-            "3d objects": Path.home() / "3D Objects",
-        }
+        # Check if direct absolute path was passed (e.g. C:\Users\rahul\Desktop)
+        direct_path = Path(raw_input)
+        if direct_path.exists() and direct_path.is_dir():
+            try:
+                os.startfile(str(direct_path))
+                return ToolResult(status="SUCCESS", message=f"Opened {direct_path.name or str(direct_path)}.", data={"folder": str(direct_path)})
+            except Exception as e:
+                return ToolResult(status="FAILED", message=f"Failed to open folder: {e}", error=str(e))
 
-        target = folder_map.get(clean_name)
+        # Clean speech noise words: "my downloads folder", "the pictures directory", "open downloads"
+        clean_name = re.sub(r'(?i)\b(my|the|open|folder|directory|files|please)\b', '', clean_name).strip()
+        clean_name = clean_name.rstrip(".,!/\\").strip()
+
+        # Drive letter support (e.g. "c drive", "c:", "d drive", "d:")
+        if clean_name in ["c", "c drive", "c:"] or raw_input.lower() in ["c:", "c:\\", "c drive"]:
+            target = Path("C:/")
+        elif clean_name in ["d", "d drive", "d:"] or raw_input.lower() in ["d:", "d:\\", "d drive"]:
+            target = Path("D:/")
+        elif clean_name in ["e", "e drive", "e:"] or raw_input.lower() in ["e:", "e:\\", "e drive"]:
+            target = Path("E:/")
+        else:
+            # Well-known system folders (supporting singular, plural, and natural speech variants)
+            folder_map = {
+                "downloads": Path.home() / "Downloads",
+                "download": Path.home() / "Downloads",
+                "documents": Path.home() / "Documents",
+                "document": Path.home() / "Documents",
+                "pictures": Path.home() / "Pictures",
+                "picture": Path.home() / "Pictures",
+                "photos": Path.home() / "Pictures",
+                "photo": Path.home() / "Pictures",
+                "images": Path.home() / "Pictures",
+                "image": Path.home() / "Pictures",
+                "screenshots": Path.home() / "Pictures" / "Screenshots",
+                "screenshot": Path.home() / "Pictures" / "Screenshots",
+                "videos": (Path.home() / "Videos" / "videos") if (Path.home() / "Videos" / "videos").exists() else (Path.home() / "Videos"),
+                "video": (Path.home() / "Videos" / "videos") if (Path.home() / "Videos" / "videos").exists() else (Path.home() / "Videos"),
+                "movies": (Path.home() / "Videos" / "movies") if (Path.home() / "Videos" / "movies").exists() else (Path.home() / "Videos"),
+                "movie": (Path.home() / "Videos" / "movies") if (Path.home() / "Videos" / "movies").exists() else (Path.home() / "Videos"),
+                "films": (Path.home() / "Videos" / "movies") if (Path.home() / "Videos" / "movies").exists() else (Path.home() / "Videos"),
+                "film": (Path.home() / "Videos" / "movies") if (Path.home() / "Videos" / "movies").exists() else (Path.home() / "Videos"),
+                "music": Path.home() / "Music",
+                "songs": Path.home() / "Music",
+                "song": Path.home() / "Music",
+                "audio": Path.home() / "Music",
+                "desktop": Path.home() / "Desktop",
+                "home": Path.home(),
+                "appdata": Path.home() / "AppData",
+                "onedrive": Path.home() / "OneDrive",
+                "3d objects": Path.home() / "3D Objects",
+            }
+            target = folder_map.get(clean_name)
 
         # If not in the map, search common directories for a matching folder
         if not target:
@@ -190,7 +212,7 @@ class FilesystemTool(BaseTool):
                     continue
                 try:
                     for child in search_root.iterdir():
-                        if child.is_dir() and child.name.lower() == clean_name:
+                        if child.is_dir() and (child.name.lower() == clean_name or clean_name in child.name.lower()):
                             target = child
                             break
                 except Exception:
@@ -198,14 +220,13 @@ class FilesystemTool(BaseTool):
                 if target:
                     break
 
-        if not target:
+        if not target or not target.exists():
             return ToolResult(status="FAILED", message=f"I couldn't find a folder named '{folder}' on your system.")
 
         try:
-            if not target.exists():
-                target.mkdir(parents=True, exist_ok=True)
             os.startfile(str(target))
-            return ToolResult(status="SUCCESS", message=f"Opened your {folder.capitalize()} folder.", data={"folder": str(target)})
+            display_name = target.name if target.name else str(target)
+            return ToolResult(status="SUCCESS", message=f"Opened your {display_name} folder.", data={"folder": str(target)})
         except Exception as e:
             return ToolResult(status="FAILED", message=f"Failed to open folder: {e}", error=str(e))
 

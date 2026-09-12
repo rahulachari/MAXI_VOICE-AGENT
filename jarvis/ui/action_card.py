@@ -30,11 +30,11 @@ APP_ICONS = {
     "task": "📝",
     "search": "🌐",
     "browser": "🌐",
-    "music": "🎵",
-    "spotify": "🎵",
-    "youtube": "▶️",
-    "settings": "⚙️",
-    "default": "⚡",
+    "music": "♫",
+    "spotify": "♫",
+    "youtube": "▷",
+    "settings": "⚙",
+    "default": "✦",
 }
 
 

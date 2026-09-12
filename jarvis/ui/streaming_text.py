@@ -5,8 +5,9 @@ Words resolve smoothly with inline source citation chips, action icons
 and clickable follow-up prompt suggestions.
 """
 
+import os
 from typing import List, Dict, Optional, Callable
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import Qt, QTimer, Signal, QSize
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -16,7 +17,11 @@ from PySide6.QtWidgets import (
     QFrame,
     QApplication,
 )
-from PySide6.QtGui import QCursor, QFont
+from PySide6.QtGui import QCursor, QFont, QIcon
+
+_ASSETS_DIR = os.path.join(os.path.dirname(__file__), "assets")
+_COPY_ICON = os.path.join(_ASSETS_DIR, "copy_icon.svg")
+_CHECK_ICON = os.path.join(_ASSETS_DIR, "check_icon.svg")
 
 
 DEFAULT_SOURCES = [
@@ -118,7 +123,12 @@ class StreamingTextWidget(QWidget):
             }
         """
 
-        self.btn_copy = QPushButton("📋")
+        self.btn_copy = QPushButton("")
+        if os.path.exists(_COPY_ICON):
+            self.btn_copy.setIcon(QIcon(_COPY_ICON))
+            self.btn_copy.setIconSize(QSize(13, 13))
+        else:
+            self.btn_copy.setText("📋")
         self.btn_copy.setToolTip("Copy text")
         self.btn_copy.setCursor(Qt.PointingHandCursor)
         self.btn_copy.setStyleSheet(btn_style)
@@ -330,6 +340,18 @@ class StreamingTextWidget(QWidget):
     def _copy_to_clipboard(self):
         clipboard = QApplication.clipboard()
         clipboard.setText(self._full_text)
-        self.btn_copy.setText("✓")
-        QTimer.singleShot(1200, lambda: self.btn_copy.setText("📋"))
+        if os.path.exists(_CHECK_ICON):
+            self.btn_copy.setIcon(QIcon(_CHECK_ICON))
+            self.btn_copy.setText("")
+        else:
+            self.btn_copy.setText("✓")
+
+        def _restore():
+            if os.path.exists(_COPY_ICON):
+                self.btn_copy.setIcon(QIcon(_COPY_ICON))
+                self.btn_copy.setText("")
+            else:
+                self.btn_copy.setText("📋")
+
+        QTimer.singleShot(1200, _restore)
         self.copy_requested.emit(self._full_text)

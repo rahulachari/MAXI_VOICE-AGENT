@@ -138,7 +138,25 @@ class CommandRouter:
         if cat in [IntentCategory.APP_LAUNCH, IntentCategory.APP_CLOSE, IntentCategory.APP_FOCUS, IntentCategory.WINDOW_CONTROL, IntentCategory.SYSTEM_CONTROL]:
             return self.windows_tool.execute(intent.action, **intent.params)
 
-        elif cat in [IntentCategory.WEB_NAVIGATION, IntentCategory.WEB_SEARCH, IntentCategory.BROWSER_ACTION]:
+        elif cat == IntentCategory.WEB_SEARCH:
+            query = intent.params.get("query", "").strip()
+            q_lower = query.lower()
+            # If query is an informational question rather than an explicit browser command, answer directly in notch
+            is_explicit_browser = any(kw in q_lower for kw in ["open google", "open chrome", "search in google", "search in chrome", "open browser"])
+            is_informational = (
+                any(q_word in q_lower for q_word in ["rating", "imdb", "mbd", "match", "score", "schedule", "who", "what", "where", "when", "why", "how", "is there", "are there", "weather", "vs", "versus", "price"])
+                or "?" in query
+            )
+            if not is_explicit_browser and is_informational:
+                return self.ai_query_tool.execute(
+                    "query",
+                    query=query,
+                    answer=intent.confirmation_prompt,
+                    full_details=intent.params.get("full_details"),
+                )
+            return self.browser_tool.execute(intent.action, **intent.params)
+
+        elif cat in [IntentCategory.WEB_NAVIGATION, IntentCategory.BROWSER_ACTION]:
             return self.browser_tool.execute(intent.action, **intent.params)
 
         elif cat in [IntentCategory.FILE_SEARCH, IntentCategory.FILE_OPEN, IntentCategory.FILE_CREATE, IntentCategory.FILE_DELETE]:

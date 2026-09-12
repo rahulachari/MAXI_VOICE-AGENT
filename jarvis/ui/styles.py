@@ -4,18 +4,19 @@ Deep Black Obsidian Glassmorphism with Apple Liquid Glass Specular Aesthetics.
 Status chips, app-specific badges, and VoiceOS-style typography.
 """
 
-# Color Palette Tokens - OLED Black Minimal Style (Zero glow)
+# Color Palette Tokens - MacBook Liquid Glass & OLED Black Aesthetic
 COLOR_BACKGROUND_GLASS = "#000000"
-COLOR_CARD_GLASS = "#000000"
+COLOR_CARD_GLASS = "#05070d"
 
-COLOR_TEXT_PRIMARY = "#ffffff"
-COLOR_TEXT_SECONDARY = "#a1a1aa"
-COLOR_TEXT_MUTED = "#52525b"
+COLOR_TEXT_PRIMARY = "#f8fafc"
+COLOR_TEXT_SECONDARY = "#94a3b8"
+COLOR_TEXT_MUTED = "#64748b"
 
-COLOR_BORDER_GLASS = "#18181b"
-COLOR_BORDER_RIM = "#1c1c1e"
+COLOR_BORDER_GLASS = "rgba(255, 255, 255, 0.12)"
+COLOR_BORDER_RIM = "rgba(255, 255, 255, 0.24)"
 COLOR_ACCENT_CYAN = "#38bdf8"
-COLOR_ACCENT_BLUE = "#3b82f6"
+COLOR_ACCENT_BLUE = "#2563eb"
+COLOR_ACCENT_METALLIC_DEEP = "#1e3a8a"
 
 # VoiceOS Font Stack
 FONT_STACK = "'Segoe UI Variable Display', 'Segoe UI', -apple-system, 'SF Pro Display', Roboto, sans-serif"
@@ -23,9 +24,8 @@ FONT_MONO = "'Cascadia Code', 'DM Mono', 'SF Mono', 'Consolas', monospace"
 
 NOTCH_BASE_STYLE = f"""
 QFrame#NotchContainer {{
-    background: #000000;
-    border: 1px solid #161616;
-    border-radius: 24px;
+    background: transparent;
+    border: none;
 }}
 
 QLabel {{
@@ -36,9 +36,10 @@ QLabel {{
 
 QLabel#PromptLabel {{
     color: {COLOR_TEXT_PRIMARY};
-    font-size: 16px;
+    font-size: 14.5px;
     font-weight: 500;
-    letter-spacing: -0.2px;
+    line-height: 1.5;
+    letter-spacing: -0.1px;
     background: transparent;
 }}
 
@@ -46,11 +47,11 @@ QLabel#StatusPill {{
     background: rgba(255, 255, 255, 0.06);
     border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 9px;
-    color: #94a3b8;
-    padding: 2px 10px;
+    color: #cbd5e1;
+    padding: 3px 10px;
     font-size: 11px;
-    font-weight: 500;
-    letter-spacing: 0.15px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
 }}
 QLabel#StatusPill:hover {{
     background: rgba(255, 255, 255, 0.12);

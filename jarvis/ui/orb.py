@@ -1,8 +1,8 @@
 """
-JARVIS VoiceOS Living Liquid Siri & Gemini Live Orb
-Ultra-premium native 60 FPS procedural fluid bubbling orb with real-time
-refraction, iridescent chromatic dispersion, and voice audio reactivity.
-Zero WebEngine dependencies, 0ms startup, silky smooth GPU-rendered graphics.
+JARVIS VoiceOS Monochromatic Transparent Liquid Orb
+Pure crystal-clarity liquid glass and monochrome metallic fluid ribbons.
+Completely zero-color design: pure white, platinum, silver, cement, and translucent graphite glass.
+Silky smooth GPU-accelerated 60 FPS rendering with zero WebEngine latency.
 """
 
 import math
@@ -24,7 +24,7 @@ from PySide6.QtWidgets import QWidget
 class VoiceOSOrb(QWidget):
     clicked = Signal()
 
-    def __init__(self, parent=None, size: int = 56):
+    def __init__(self, parent=None, size: int = 30):
         super().__init__(parent)
         self._size = size
         self.setFixedSize(size, size)
@@ -38,20 +38,31 @@ class VoiceOSOrb(QWidget):
         self._rotation = 0.0
         self._pulse = 0.0
 
-        # High-FPS update loop
+        # ~60 FPS update loop
         self._timer = QTimer(self)
-        self._timer.setInterval(16)  # ~60 FPS
+        self._timer.setInterval(16)
         self._timer.timeout.connect(self._on_tick)
         self._timer.start()
 
     def set_state(self, state: str):
         self._state = (state or "IDLE").upper()
+        if self._state == "REST":
+            self._target_energy = 0.0
+            self._energy = 0.0
+            if self._timer.isActive():
+                self._timer.stop()
+            self.update()
+            return
+
+        if not self._timer.isActive():
+            self._timer.start()
+
         if self._state == "IDLE":
             self._target_energy = 0.08
         elif self._state in ["PROCESSING", "THINKING"]:
-            self._target_energy = 0.55
-        elif self._state in ["SPEAKING"]:
-            self._target_energy = 0.70
+            self._target_energy = 0.60
+        elif self._state in ["SPEAKING", "LISTENING"]:
+            self._target_energy = 0.80
         self.update()
 
     def set_energy(self, energy: float):
@@ -60,20 +71,12 @@ class VoiceOSOrb(QWidget):
         self._target_energy = max(0.08, min(1.0, boosted))
 
     def _on_tick(self):
-        # Smooth energy interpolation
         self._energy += (self._target_energy - self._energy) * 0.16
 
-        # Speed modulation based on state & energy
-        if self._state in ["PROCESSING", "THINKING"]:
-            speed = 2.4
-        elif self._state == "SPEAKING":
-            speed = 1.8
-        elif self._state == "LISTENING":
-            speed = 1.2 + self._energy * 2.0
-        else:
-            speed = 0.6
+        is_active = self._state in ["PROCESSING", "THINKING", "SPEAKING", "LISTENING"]
+        speed = (1.10 + self._energy * 0.8) if is_active else 0.35
 
-        self._phase += 0.03 * speed
+        self._phase += 0.035 * speed
         self._rotation += 0.02 * speed
         self._pulse = math.sin(self._phase * 1.8) * 0.5 + 0.5
         self.update()
@@ -84,6 +87,8 @@ class VoiceOSOrb(QWidget):
         super().mousePressEvent(event)
 
     def paintEvent(self, event):
+        if self._state == "REST":
+            return
         w = self.width()
         h = self.height()
         if w <= 0 or h <= 0:
@@ -95,98 +100,191 @@ class VoiceOSOrb(QWidget):
 
         cx = w / 2.0
         cy = h / 2.0
-        base_radius = min(w, h) * 0.40
+        base_radius = min(w, h) * 0.43
 
-        # State color palettes (Siri & Gemini Live hues)
-        if self._state in ["LISTENING"]:
-            c_core = QColor(0, 242, 254)       # Bright Electric Cyan
-            c_mid = QColor(79, 172, 254)       # Deep Aqua
-            c_outer = QColor(0, 114, 255)      # Sapphire
-            c_rim = QColor(0, 255, 230, 200)   # Neon Teal
-        elif self._state in ["PROCESSING", "THINKING"]:
-            c_core = QColor(0, 242, 254)       # Cyan
-            c_mid = QColor(178, 36, 239)       # Violet
-            c_outer = QColor(240, 147, 251)    # Magenta
-            c_rim = QColor(255, 255, 255, 220) # Bright White
-        elif self._state in ["SPEAKING"]:
-            c_core = QColor(117, 121, 255)     # Lavender Blue
-            c_mid = QColor(178, 36, 239)       # Royal Violet
-            c_outer = QColor(0, 198, 255)      # Cyan Blue
-            c_rim = QColor(240, 147, 251, 210) # Iridescent Pink
-        elif self._state in ["ERROR"]:
-            c_core = QColor(255, 75, 43)       # Flame Red
-            c_mid = QColor(255, 65, 108)       # Crimson
-            c_outer = QColor(180, 20, 50)      # Deep Blood
-            c_rim = QColor(255, 120, 120, 200)
-        else:  # IDLE
-            c_core = QColor(0, 180, 255)       # Calm Neon Sky
-            c_mid = QColor(10, 80, 200)        # Deep Sapphire
-            c_outer = QColor(5, 25, 80)        # OLED Abyss
-            c_rim = QColor(0, 200, 255, 120)
+        is_active = self._state in ["PROCESSING", "THINKING", "SPEAKING", "LISTENING"]
 
-        # 1. Radiant Ambient Glow (surges with energy)
-        glow_rad = base_radius * (1.25 + self._energy * 0.45)
+        # -------------------------------------------------------------
+        # 1. Subtle Translucent White Ambient Aura (Zero Colors)
+        # -------------------------------------------------------------
+        glow_rad = base_radius * (1.25 + self._energy * 0.30)
         glow_grad = QRadialGradient(cx, cy, glow_rad)
-        glow_c = QColor(c_core)
-        glow_c.setAlpha(int(60 + self._energy * 100))
-        glow_grad.setColorAt(0.0, glow_c)
-        glow_grad.setColorAt(0.65, QColor(c_mid.red(), c_mid.green(), c_mid.blue(), int(30 + self._energy * 40)))
+        glow_alpha = int(35 + self._energy * 45) if is_active else 20
+        glow_grad.setColorAt(0.0, QColor(255, 255, 255, glow_alpha))
+        glow_grad.setColorAt(0.60, QColor(226, 232, 240, int(glow_alpha * 0.40)))
         glow_grad.setColorAt(1.0, QColor(0, 0, 0, 0))
 
         painter.setPen(Qt.NoPen)
         painter.setBrush(QBrush(glow_grad))
         painter.drawEllipse(QPointF(cx, cy), glow_rad, glow_rad)
 
-        # 2. Fluid Bubbling Lobes (3 organic undulating harmonic lobes)
-        num_points = 48
-        current_rad = base_radius * (0.92 + self._energy * 0.22)
-        path = QPainterPath()
+        # -------------------------------------------------------------
+        # 2. Pure Transparent Liquid Glass Base (Zero Colors)
+        # -------------------------------------------------------------
+        current_rad = base_radius * (0.97 + self._energy * 0.05)
+        clip_path = QPainterPath()
+        clip_path.addEllipse(QPointF(cx, cy), current_rad, current_rad)
 
-        for i in range(num_points):
-            theta = (i / float(num_points)) * 2 * math.pi
-            # Bubbling deformation formula: 3-lobe + 2-lobe interference
-            wave1 = math.sin(theta * 3.0 + self._phase * 2.1) * (0.07 + self._energy * 0.12)
-            wave2 = math.cos(theta * 2.0 - self._phase * 1.7) * (0.05 + self._energy * 0.08)
-            wave3 = math.sin(theta * 5.0 + self._phase * 3.2) * (0.02 + self._energy * 0.05)
+        painter.save()
+        painter.setClipPath(clip_path)
 
-            r_i = current_rad * (1.0 + wave1 + wave2 + wave3)
-            px = cx + r_i * math.cos(theta + self._rotation)
-            py = cy + r_i * math.sin(theta + self._rotation)
+        # High-transparency dark glass body
+        base_grad = QRadialGradient(cx - current_rad * 0.25, cy - current_rad * 0.25, current_rad * 1.35)
+        base_grad.setColorAt(0.0, QColor(25, 28, 35, 160))
+        base_grad.setColorAt(0.60, QColor(10, 12, 16, 200))
+        base_grad.setColorAt(1.0, QColor(3, 4, 6, 240))
+        painter.setBrush(QBrush(base_grad))
+        painter.drawEllipse(QPointF(cx, cy), current_rad, current_rad)
 
-            if i == 0:
-                path.moveTo(px, py)
+        # -------------------------------------------------------------
+        # 3. Monochromatic Liquid Metal Fluid Ribbons (Silver, Platinum, White)
+        #    Rotated at metalAngle (65° = 1.134 rad) — Absolutely NO colors!
+        # -------------------------------------------------------------
+        angle_rad = 1.134
+        cos_a = math.cos(angle_rad)
+        sin_a = math.sin(angle_rad)
+
+        evolution = (1.0 + self._energy * 0.5) if is_active else 0.40
+
+        # Pure monochrome silver/platinum/graphite ribbons
+        ribbons = [
+            # Background soft platinum ribbon
+            {
+                "color": QColor(203, 213, 225),  # Cement Silver
+                "alpha": int(100 + self._energy * 90) if is_active else 65,
+                "amp_mult": 0.28,
+                "freq": 2.1,
+                "offset": 0.0,
+                "stroke_w": 0.13,
+            },
+            # Primary luminous white ribbon
+            {
+                "color": QColor(255, 255, 255),  # Pure White
+                "alpha": int(145 + self._energy * 95) if is_active else 100,
+                "amp_mult": 0.32,
+                "freq": 2.4,
+                "offset": 1.4,
+                "stroke_w": 0.11,
+            },
+            # Translucent graphite depth fold
+            {
+                "color": QColor(148, 163, 184),  # Slate / Graphite
+                "alpha": int(80 + self._energy * 75) if is_active else 50,
+                "amp_mult": 0.26,
+                "freq": 2.7,
+                "offset": 2.8,
+                "stroke_w": 0.12,
+            },
+            # Frosted silver harmonic ribbon
+            {
+                "color": QColor(226, 232, 240),  # Frosted Platinum
+                "alpha": int(115 + self._energy * 85) if is_active else 75,
+                "amp_mult": 0.22,
+                "freq": 1.8,
+                "offset": 4.1,
+                "stroke_w": 0.10,
+            },
+        ]
+
+        steps = 32
+        for r in ribbons:
+            color = r["color"]
+            alpha = r["alpha"]
+            amp = r["amp_mult"] * current_rad * (0.6 + self._energy * 0.6) * evolution
+            freq = r["freq"]
+            offset = r["offset"]
+            stroke_mult = r["stroke_w"]
+
+            path = QPainterPath()
+            first = True
+            for i in range(steps + 1):
+                t = i / steps
+                rx = -current_rad + t * (2.0 * current_rad)
+                rel_x = rx / current_rad
+                envelope = max(0.0, 1.0 - rel_x * rel_x)
+
+                wave = math.sin(t * math.pi * freq + self._phase * 1.2 + offset) * amp * envelope
+                wave += math.sin(rel_x * 4.0 - self._phase * 0.8 + offset * 0.5) * (amp * 0.22) * envelope
+
+                px = cx + rx * cos_a - wave * sin_a
+                py = cy + rx * sin_a + wave * cos_a
+
+                if first:
+                    path.moveTo(px, py)
+                    first = False
+                else:
+                    path.lineTo(px, py)
+
+            pen = QPen(QColor(color.red(), color.green(), color.blue(), alpha), max(1.4, current_rad * stroke_mult))
+            pen.setCapStyle(Qt.RoundCap)
+            painter.setPen(pen)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawPath(path)
+
+        # -------------------------------------------------------------
+        # 4. White Core Crest Filament (High-Clarity Centerline)
+        # -------------------------------------------------------------
+        core_amp = current_rad * 0.20 * (0.65 + self._energy * 0.75)
+        core_path = QPainterPath()
+        first = True
+        for i in range(steps + 1):
+            t = i / steps
+            rx = -current_rad + t * (2.0 * current_rad)
+            rel_x = rx / current_rad
+            envelope = max(0.0, 1.0 - rel_x * rel_x)
+            wave = math.sin(t * math.pi * 2.3 + self._phase * 1.4) * core_amp * envelope
+
+            px = cx + rx * cos_a - wave * sin_a
+            py = cy + rx * sin_a + wave * cos_a
+
+            if first:
+                core_path.moveTo(px, py)
+                first = False
             else:
-                path.lineTo(px, py)
+                core_path.lineTo(px, py)
 
-        path.closeSubpath()
+        core_alpha = int(210 + self._energy * 45) if is_active else 140
+        core_pen = QPen(QColor(255, 255, 255, core_alpha), max(1.0, current_rad * 0.055))
+        core_pen.setCapStyle(Qt.RoundCap)
+        painter.setPen(core_pen)
+        painter.drawPath(core_path)
 
-        # 3. Fluid Body Gradient (Living Plasma)
-        core_grad = QRadialGradient(cx - current_rad * 0.25, cy - current_rad * 0.25, current_rad * 1.3)
-        core_grad.setColorAt(0.0, c_core)
-        core_grad.setColorAt(0.45, c_mid)
-        core_grad.setColorAt(0.85, c_outer)
-        core_grad.setColorAt(1.0, QColor(0, 0, 0, 180))
-
-        painter.setBrush(QBrush(core_grad))
+        # -------------------------------------------------------------
+        # 5. Monochromatic Glass Specular Highlights (Zero Color)
+        # -------------------------------------------------------------
+        # Top-left key highlight (pure white/silver)
+        key_x = cx - current_rad * 0.32
+        key_y = cy - current_rad * 0.32
+        key_rad = current_rad * 0.50
+        key_grad = QRadialGradient(key_x, key_y, key_rad)
+        key_grad.setColorAt(0.0, QColor(255, 255, 255, int(80 + self._energy * 60)))
+        key_grad.setColorAt(0.5, QColor(241, 245, 249, int(35 + self._energy * 25)))
+        key_grad.setColorAt(1.0, QColor(0, 0, 0, 0))
         painter.setPen(Qt.NoPen)
-        painter.drawPath(path)
+        painter.setBrush(QBrush(key_grad))
+        painter.drawEllipse(QPointF(key_x, key_y), key_rad, key_rad)
 
-        # 4. Iridescent Glass Specular Rim Highlight (Apple Siri style)
-        rim_pen = QPen(c_rim, max(1.2, current_rad * 0.08))
+        painter.restore()
+
+        # -------------------------------------------------------------
+        # 6. Crystal-Clear Liquid Glass Hairline Specular Rim & Glint
+        # -------------------------------------------------------------
+        rim_pen = QPen(QColor(255, 255, 255, 110), 1.0)
         painter.setPen(rim_pen)
         painter.setBrush(Qt.NoBrush)
-        painter.drawPath(path)
+        painter.drawEllipse(QPointF(cx, cy), current_rad, current_rad)
 
-        # 5. Caustic Specular Glint (Top-left lens reflection)
-        glint_w = current_rad * 0.45
-        glint_h = current_rad * 0.22
-        glint_x = cx - current_rad * 0.50
-        glint_y = cy - current_rad * 0.55
+        # Crisp top-left lens glint
+        glint_rx = current_rad * 0.36
+        glint_ry = current_rad * 0.17
+        gx = cx - current_rad * 0.28
+        gy = cy - current_rad * 0.38
 
-        glint_grad = QLinearGradient(glint_x, glint_y, glint_x, glint_y + glint_h)
-        glint_grad.setColorAt(0.0, QColor(255, 255, 255, 210))
+        glint_grad = QLinearGradient(gx, gy, gx, gy + glint_ry * 2.0)
+        glint_grad.setColorAt(0.0, QColor(255, 255, 255, 230))
+        glint_grad.setColorAt(0.5, QColor(255, 255, 255, 80))
         glint_grad.setColorAt(1.0, QColor(255, 255, 255, 0))
 
         painter.setPen(Qt.NoPen)
         painter.setBrush(QBrush(glint_grad))
-        painter.drawEllipse(QPointF(glint_x + glint_w / 2.0, glint_y + glint_h / 2.0), glint_w / 2.0, glint_h / 2.0)
+        painter.drawEllipse(QPointF(gx, gy + glint_ry), glint_rx, glint_ry)
