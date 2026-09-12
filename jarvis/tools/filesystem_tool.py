@@ -36,6 +36,10 @@ class FilesystemTool(BaseTool):
             folder = kwargs.get("folder", "")
             return self.open_folder(folder)
 
+        elif action == "open_latest_file":
+            folder = kwargs.get("folder", "")
+            return self.open_latest_file(folder)
+
         elif action == "create_folder":
             folder_name = kwargs.get("name", "")
             location = kwargs.get("location", "Desktop")
@@ -93,17 +97,41 @@ class FilesystemTool(BaseTool):
         )
 
     def open_file(self, query: str) -> ToolResult:
-        res = self.find_files(query, limit=2)
+        clean_q = query.lower().strip()
+        # Clean speech filler: "the video file" -> "video", "screenshot file" -> "screenshot"
+        import re
+        clean_q = re.sub(r"^(?:the\s+|my\s+)", "", clean_q)
+        clean_q = re.sub(r"\s+(?:file|files|folder|directory)$", "", clean_q).strip()
+
+        # Check if query refers to a system category folder
+        folder_keywords = {
+            "video", "videos", "screenshot", "screenshots", "movie", "movies",
+            "film", "films", "download", "downloads", "document", "documents",
+            "picture", "pictures", "photo", "photos", "image", "images",
+            "music", "song", "songs", "desktop"
+        }
+        if clean_q in folder_keywords:
+            return self.open_folder(clean_q)
+
+        res = self.find_files(query, limit=5)
         matches = res.data.get("matches", [])
 
         if not matches:
-            return ToolResult(status="FAILED", message=f"Could not find any file named '{query}'.")
+            # Fallback: check if there is a matching folder on system
+            folder_res = self.open_folder(clean_q)
+            if folder_res.status == "SUCCESS":
+                return folder_res
+            return ToolResult(status="FAILED", message=f"Could not find any file or folder named '{query}'.")
 
-        if len(matches) > 1:
-            return res  # returns clarification
-
-        target_file = matches[0]
+        # Pick the most recently modified file among matches
         try:
+            sorted_matches = sorted(matches, key=lambda p: os.path.getmtime(p), reverse=True)
+            target_file = sorted_matches[0]
+        except Exception:
+            target_file = matches[0]
+
+        try:
+            os.environ["JARVIS_LAST_FILE"] = str(target_file)
             os.startfile(target_file)
             name = Path(target_file).name
             return ToolResult(status="SUCCESS", message=f"Opened {name}.", data={"file": target_file})
@@ -113,15 +141,30 @@ class FilesystemTool(BaseTool):
     def open_folder(self, folder: str) -> ToolResult:
         clean_name = folder.lower().strip()
 
-        # Well-known system folders
+        # Well-known system folders (supporting singular, plural, and natural speech variants)
         folder_map = {
             "downloads": Path.home() / "Downloads",
+            "download": Path.home() / "Downloads",
             "documents": Path.home() / "Documents",
+            "document": Path.home() / "Documents",
             "pictures": Path.home() / "Pictures",
+            "picture": Path.home() / "Pictures",
+            "photos": Path.home() / "Pictures",
+            "photo": Path.home() / "Pictures",
+            "images": Path.home() / "Pictures",
+            "image": Path.home() / "Pictures",
             "screenshots": Path.home() / "Pictures" / "Screenshots",
-            "videos": Path.home() / "Videos",
-            "movies": Path.home() / "Videos",
+            "screenshot": Path.home() / "Pictures" / "Screenshots",
+            "videos": (Path.home() / "Videos" / "videos") if (Path.home() / "Videos" / "videos").exists() else (Path.home() / "Videos"),
+            "video": (Path.home() / "Videos" / "videos") if (Path.home() / "Videos" / "videos").exists() else (Path.home() / "Videos"),
+            "movies": (Path.home() / "Videos" / "movies") if (Path.home() / "Videos" / "movies").exists() else (Path.home() / "Videos"),
+            "movie": (Path.home() / "Videos" / "movies") if (Path.home() / "Videos" / "movies").exists() else (Path.home() / "Videos"),
+            "films": (Path.home() / "Videos" / "movies") if (Path.home() / "Videos" / "movies").exists() else (Path.home() / "Videos"),
+            "film": (Path.home() / "Videos" / "movies") if (Path.home() / "Videos" / "movies").exists() else (Path.home() / "Videos"),
             "music": Path.home() / "Music",
+            "songs": Path.home() / "Music",
+            "song": Path.home() / "Music",
+            "audio": Path.home() / "Music",
             "desktop": Path.home() / "Desktop",
             "home": Path.home(),
             "appdata": Path.home() / "AppData",
@@ -165,6 +208,32 @@ class FilesystemTool(BaseTool):
             return ToolResult(status="SUCCESS", message=f"Opened your {folder.capitalize()} folder.", data={"folder": str(target)})
         except Exception as e:
             return ToolResult(status="FAILED", message=f"Failed to open folder: {e}", error=str(e))
+
+    def open_latest_file(self, folder: str) -> ToolResult:
+        clean_name = folder.lower().strip()
+        from jarvis.tools.folder_registry import folder_registry
+        
+        target, err = folder_registry.resolve_folder(clean_name)
+        if not target:
+            return ToolResult(status="FAILED", message=err or f"I couldn't find a folder named '{folder}' on your system.")
+            
+        try:
+            if not target.exists():
+                return ToolResult(status="FAILED", message=f"The {folder} folder doesn't exist.")
+                
+            files = [f for f in target.iterdir() if f.is_file() and not f.name.startswith(".")]
+            if not files:
+                return ToolResult(status="FAILED", message=f"The {folder} folder is empty.")
+                
+            # Sort by modified time, descending
+            files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+            latest_file = files[0]
+            
+            os.environ["JARVIS_LAST_FILE"] = str(latest_file)
+            os.startfile(str(latest_file))
+            return ToolResult(status="SUCCESS", message=f"Opened {latest_file.name}.", data={"file": str(latest_file)})
+        except Exception as e:
+            return ToolResult(status="FAILED", message=f"Failed to open the latest file: {e}", error=str(e))
 
     def create_folder(self, folder_name: str, location: str = "Desktop") -> ToolResult:
         if not folder_name:

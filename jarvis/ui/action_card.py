@@ -73,22 +73,17 @@ class LiquidGlassActionCard(QFrame):
         self.setObjectName("LiquidGlassActionCard")
         self.setFixedWidth(360)
 
-        # Deep liquid glass styling
+        # Deep dark OLED black styling (zero glow)
         self.setStyleSheet("""
             QFrame#LiquidGlassActionCard {
-                background: rgba(20, 20, 24, 0.90);
-                border: 1px solid rgba(255, 255, 255, 0.10);
-                border-top: 1px solid rgba(255, 255, 255, 0.16);
+                background: #000000;
+                border: 1px solid #1c1c1e;
                 border-radius: 18px;
             }
         """)
 
-        # Soft blue-tinted floating glow (diffuse, not harsh)
-        glow = QGraphicsDropShadowEffect(self)
-        glow.setBlurRadius(42)
-        glow.setColor(QColor(10, 108, 255, 65))
-        glow.setOffset(0, 8)
-        self.setGraphicsEffect(glow)
+        # Zero glow effects
+        self.setGraphicsEffect(None)
 
         self._init_ui()
 

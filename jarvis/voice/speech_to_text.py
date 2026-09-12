@@ -31,6 +31,10 @@ CUSTOM_VOCABULARY_BOOSTS = [
     (r"\b(spotty\s*fi|spotifly)\b", "Spotify"),
 
     # Everyday apps & services
+    (r"\b(g\s*mail|g\s*meil|gee\s*mail|jeemail|jimail)\b", "Gmail"),
+    (r"\b(git\s*hub|get\s*hub)\b", "GitHub"),
+    (r"\b(resumay|resumee|rezume|rezumay)\b", "resume"),
+    (r"\b(apply\s+for\s+this|apply\s+for\s+the\s+job|apply\s+to\s+this|apply\s+job)\b", "apply for this job"),
     (r"\b(you\s*tube|u\s*tube|ytube)\b", "YouTube"),
     (r"\b(whats\s*app|what\s*app)\b", "WhatsApp"),
     (r"\b(poke\s*games)\b", "Poki games"),

@@ -90,7 +90,7 @@ class MicrophoneRecorder:
             else:
                 full_audio = np.array([], dtype=np.int16)
 
-        if self.finished_callback and len(full_audio) > 0:
+        if self.finished_callback:
             self.finished_callback(full_audio)
 
         return full_audio

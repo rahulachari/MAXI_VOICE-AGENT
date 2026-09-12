@@ -85,12 +85,59 @@ pub fn get_gemini_key() -> Result<String, String> {
                 }
             }
         }
+    }
     if let Ok(val) = std::env::var("GEMINI_API_KEY") {
         if !val.trim().is_empty() {
             return Ok(val.trim().to_string());
         }
     }
     Err("GEMINI_API_KEY not configured in .env".to_string())
+}
+
+#[command]
+pub fn capture_screen() -> Result<String, String> {
+    let output = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", r#"
+            Add-Type -AssemblyName System.Windows.Forms
+            Add-Type -AssemblyName System.Drawing
+            $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+            $bmp = New-Object System.Drawing.Bitmap($b.Width, $b.Height)
+            $g = [System.Drawing.Graphics]::FromImage($bmp)
+            $g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+            $ms = New-Object System.IO.MemoryStream
+            $bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Jpeg)
+            $bytes = $ms.ToArray()
+            $g.Dispose()
+            $bmp.Dispose()
+            $ms.Dispose()
+            [Convert]::ToBase64String($bytes)
+        "#])
+        .output()
+        .map_err(|e| format!("Failed to execute powershell: {}", e))?;
+
+    if output.status.success() {
+        let b64 = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !b64.is_empty() {
+            return Ok(b64);
+        }
+    }
+    Err(String::from_utf8_lossy(&output.stderr).to_string())
+}
+
+#[command]
+pub fn set_clipboard(text: String) -> Result<(), String> {
+    let mut child = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-Command", "$input | Set-Clipboard"])
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        use std::io::Write;
+        let _ = stdin.write_all(text.as_bytes());
+    }
+    let _ = child.wait();
+    Ok(())
 }
 
 #[command]
@@ -112,3 +159,4 @@ pub fn general_web_action(search_query: String, target_platform: String) -> Resu
     win_shell_open(&search_url);
     Ok(format!("Executing general web action for {}", search_query))
 }
+

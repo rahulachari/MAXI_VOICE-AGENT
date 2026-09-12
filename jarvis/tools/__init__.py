@@ -16,6 +16,7 @@ from .task_tool import TaskTool
 from .weather_tool import WeatherTool
 from .email_reader_tool import EmailReaderTool
 from .prompt_gen_tool import PromptGeneratorTool
+from .job_application_tool import JobApplicationTool
 
 __all__ = [
     "BaseTool",
@@ -37,5 +38,6 @@ __all__ = [
     "WeatherTool",
     "EmailReaderTool",
     "PromptGeneratorTool",
+    "JobApplicationTool",
 ]
 

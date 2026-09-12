@@ -98,8 +98,8 @@ class FolderRegistry:
         Returns (Path, error_message).
         """
         clean_q = query.lower().strip()
-        # Strip common voice noise words
-        clean_q = clean_q.replace("my ", "").replace(" folder", "").replace(" directory", "").strip()
+        # Strip common voice noise words like "the video file", "my screenshot folder"
+        clean_q = clean_q.replace("my ", "").replace("the ", "").replace(" folder", "").replace(" directory", "").replace(" files", "").replace(" file", "").strip()
 
         # 1. Check custom user aliases
         if clean_q in self._custom_aliases:
@@ -129,9 +129,13 @@ class FolderRegistry:
         if clean_q in ["picture", "pictures", "photo", "photos", "images"]:
             return (self.home_dir / "Pictures").resolve(), None
 
-        if clean_q in ["video", "videos", "movie", "movies"]:
-            vid_dir = (self.home_dir / "Movies") if sys.platform == "darwin" else (self.home_dir / "Videos")
+        if clean_q in ["video", "videos"]:
+            vid_dir = (self.home_dir / "Movies") if sys.platform == "darwin" else ((self.home_dir / "Videos" / "videos") if (self.home_dir / "Videos" / "videos").exists() else (self.home_dir / "Videos"))
             return vid_dir.resolve(), None
+
+        if clean_q in ["movie", "movies", "film", "films"]:
+            movie_dir = (self.home_dir / "Movies") if sys.platform == "darwin" else ((self.home_dir / "Videos" / "movies") if (self.home_dir / "Videos" / "movies").exists() else (self.home_dir / "Videos"))
+            return movie_dir.resolve(), None
 
         if clean_q in ["music", "songs"]:
             return (self.home_dir / "Music").resolve(), None

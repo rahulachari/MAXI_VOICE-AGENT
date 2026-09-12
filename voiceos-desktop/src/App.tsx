@@ -77,7 +77,16 @@ function App() {
 
         // Small delay to let final speech tokens settle
         setTimeout(async () => {
-          const userQuery = transcriptRef.current || 'open youtube';
+          const userQuery = transcriptRef.current.trim();
+          if (!userQuery) {
+            setState('Responding');
+            setLastActionText("I didn't hear a command. Hold Ctrl+Alt to speak.");
+            hideTimerRef.current = setTimeout(async () => {
+              setState('Idle');
+              await invoke('hide_notch').catch(() => {});
+            }, 1800);
+            return;
+          }
           setTranscript(userQuery);
 
           try {

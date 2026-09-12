@@ -51,6 +51,8 @@ class CommandRouter:
         self.weather_tool = WeatherTool()
         self.email_reader_tool = EmailReaderTool()
         self.prompt_gen_tool = PromptGeneratorTool()
+        from jarvis.tools.job_application_tool import JobApplicationTool
+        self.job_application_tool = JobApplicationTool()
 
     def route_and_execute(self, transcript: str, cursor_data: Optional[Dict[str, Any]] = None) -> Tuple[Intent, ToolResult]:
         """
@@ -207,13 +209,27 @@ class CommandRouter:
 
             action = intent.action or "analyze"
             prompt = intent.params.get("prompt", "What is at this cursor position and what does it show?")
-            return self.vision_tool.execute(action, image_bytes=img_bytes, text_hint=text_hint, prompt=prompt)
+            res = self.vision_tool.execute(action, image_bytes=img_bytes, text_hint=text_hint, prompt=prompt)
+            if action == "find_linkedin" and res.requires_confirmation and res.data and "url" in res.data:
+                # Morph the intent into open_url so confirming it just opens the browser without re-running vision
+                intent.category = IntentCategory.WEB_NAVIGATION
+                intent.target = "Browser"
+                intent.action = "open_url"
+                intent.params = {"url": res.data.get("url")}
+            return res
+
+        elif cat == IntentCategory.DEEP_EXPLANATION:
+            return self.ai_query_tool.execute(
+                "deep_explanation",
+                topic=intent.params.get("topic", ""),
+            )
 
         elif cat == IntentCategory.AI_QUERY:
             return self.ai_query_tool.execute(
                 "query",
                 query=intent.params.get("query", ""),
                 answer=intent.confirmation_prompt,
+                full_details=intent.params.get("full_details"),
             )
 
         elif cat == IntentCategory.WEATHER:
@@ -261,7 +277,14 @@ class CommandRouter:
                 return ToolResult(status="FAILED", message=err)
 
             items = folder_registry.list_folder_contents(path, limit=15)
-            summary_msg = f"Here is your {path.name.title()} folder with {len(items)} items."
+            # Open native Windows Explorer folder directly for user
+            try:
+                import os
+                os.startfile(str(path))
+            except Exception:
+                pass
+
+            summary_msg = f"Opened your {path.name.title()} folder."
             return ToolResult(
                 status="SUCCESS",
                 message=summary_msg,
@@ -273,5 +296,8 @@ class CommandRouter:
                     "full_details": f"Folder: {path.name.title()} ({str(path)})\nItems: {len(items)} files listed.",
                 },
             )
+
+        elif cat == IntentCategory.JOB_APPLICATION:
+            return self.job_application_tool.execute(intent.action, **intent.params)
 
         return ToolResult(status="FAILED", message="Unrecognized command category.")

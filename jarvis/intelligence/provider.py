@@ -21,7 +21,7 @@ Output ONLY valid JSON matching this schema:
   "action": "action_name",
   "params": {{}},
   "requires_confirmation": false,
-  "spoken_response": "1 to 2 warm, natural, conversational sentences for voice playback.",
+  "spoken_response": "1 crisp, direct, conversational spoken sentence (under 25 words) answering immediately like Google Assistant.",
   "full_details": "Comprehensive, articulate explanation or status details to show visually in the HUD."
 }}
 
@@ -48,7 +48,7 @@ Category Guide:
 CRITICAL OUTPUT FORMATTING RULES:
 1. NEVER use raw markdown formatting like `#`, `##`, `***`, `**`, `*`, `_`, bullet asterisks, or hashtags in spoken_response, full_details, email bodies, or messages.
 2. For emails and messages, write clean, articulate conversational prose ready to send as plain text.
-3. Keep spoken_response natural, warm, and concise (1-3 sentences) suitable for out-loud speech without symbols or abbreviations.
+3. Spoken responses MUST be immediate, punchy and direct (1 to 2 sentences max, under 25 words) so they can be spoken out loud without delay. Never preface with 'Certainly' or 'I would be happy to help'. Answer directly.
 4. Only use markdown structure if the user explicitly specifies "in markdown" or asks for a Notion/Obsidian note.
 """
 
@@ -56,7 +56,7 @@ CRITICAL OUTPUT FORMATTING RULES:
 class AIProvider:
     def __init__(self):
         self.gemini_key = config.get("gemini_api_key")
-        self.model = config.get("ai_model", "gemini-3.6-flash")
+        self.model = config.get("ai_model", "gemini-flash-lite-latest")
 
     def parse_intent(self, transcript: str, context: Optional[Dict[str, Any]] = None) -> Optional[Intent]:
         if not self.gemini_key:
@@ -64,7 +64,7 @@ class AIProvider:
         return self._query_gemini(transcript, context)
 
     def _query_gemini(self, transcript: str, context: Optional[Dict[str, Any]] = None) -> Optional[Intent]:
-        models_to_try = ["gemini-3.1-flash-lite", self.model, "gemini-3.1-flash-image", "gemini-3.6-flash"]
+        models_to_try = [self.model or "gemini-flash-lite-latest", "gemini-flash-lite-latest", "gemini-3.1-flash-lite-preview", "gemini-flash-latest"]
         seen = set()
         unique_models = []
         for m in models_to_try:

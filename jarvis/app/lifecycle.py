@@ -22,6 +22,7 @@ from jarvis.voice.speech_to_text import get_stt_provider
 from jarvis.voice.text_to_speech import tts_engine
 from jarvis.intelligence.router import CommandRouter
 from jarvis.storage.history_repository import HistoryRepository
+from jarvis.app.live_mode import LiveSessionManager
 
 
 class LifecycleManager(QObject):
@@ -38,6 +39,7 @@ class LifecycleManager(QObject):
     sig_clear_pipeline = Signal()
     sig_show_prompt = Signal(str, str)
     sig_show_emails = Signal(list)
+    sig_show_job = Signal(dict)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -51,6 +53,11 @@ class LifecycleManager(QObject):
         self.sidebar = HistorySidebar(self.history_repo)
         self.tray = SystemTray()
         self.settings_dialog = SettingsDialog()
+
+        # Safety watchdog to prevent any stuck "Thinking..." state
+        self._processing_watchdog = QTimer(self)
+        self._processing_watchdog.setSingleShot(True)
+        self._processing_watchdog.timeout.connect(self._on_processing_timeout)
 
         # Recorder
         self.recorder = MicrophoneRecorder(
@@ -72,12 +79,17 @@ class LifecycleManager(QObject):
         self._latest_cursor_capture = None
         self._cursor_ready_event = threading.Event()
         self._cursor_ready_event.set()  # Initially ready
+        
+        self.live_session = LiveSessionManager(
+            on_state_change=lambda state, text: self.sig_set_state.emit(state, text),
+            start_listening_callback=lambda: self.recorder.start_listening(push_to_talk=False)
+        )
 
         self._connect_signals()
 
     def _connect_signals(self):
         # GUI Signal connections
-        self.sig_set_state.connect(self.notch.set_state)
+        self.sig_set_state.connect(self._on_set_state_wrapper)
         self.sig_set_energy.connect(self.notch.update_energy)
         self.sig_show_action.connect(self.notch.show_action_preview)
         self.sig_show_folder.connect(self.notch.show_folder_preview)
@@ -89,12 +101,14 @@ class LifecycleManager(QObject):
         self.sig_clear_pipeline.connect(self.notch.clear_pipeline)
         self.sig_show_prompt.connect(self.notch.show_prompt_card)
         self.sig_show_emails.connect(self.notch.show_email_list)
+        self.sig_show_job.connect(self.notch.show_job_card)
 
         # Notch signals
         self.notch.clicked.connect(self.toggle_session)
         self.notch.confirmed.connect(self._on_action_confirmed)
         self.notch.cancelled.connect(self._on_action_cancelled)
         self.notch.close_requested.connect(self.dismiss_notch)
+        self.notch.live_toggled.connect(self._on_live_toggled)
 
         # Tray signals
         self.tray.activate_requested.connect(self.toggle_session)
@@ -110,6 +124,21 @@ class LifecycleManager(QObject):
 
         # Settings signals
         self.settings_dialog.settings_saved.connect(self._on_settings_reloaded)
+
+    @Slot(str, str)
+    def _on_set_state_wrapper(self, state: str, text: str):
+        if state == "PROCESSING":
+            self._processing_watchdog.start(7500)
+        else:
+            self._processing_watchdog.stop()
+        self.notch.set_state(state, text)
+
+    @Slot()
+    def _on_processing_timeout(self):
+        """Auto-recovers from any stuck processing state."""
+        if getattr(self.notch, "_state", "") == "PROCESSING":
+            print("[Lifecycle] Processing watchdog triggered. Auto-recovering to IDLE.")
+            self.notch.set_state("IDLE", "Ready • Hold Ctrl+Alt to speak")
 
     def _on_pause_toggled(self, is_paused: bool):
         """Disables or resumes hotkeys and mic access."""
@@ -239,7 +268,17 @@ class LifecycleManager(QObject):
 
     @Slot()
     def toggle_history(self):
+        """Toggles the sidebar history panel"""
         self.sig_toggle_history.emit()
+
+    @Slot(bool)
+    def _on_live_toggled(self, is_active: bool):
+        if is_active:
+            self.sig_popup.emit()
+            self.live_session.start()
+        else:
+            self.live_session.stop()
+            self.sig_set_state.emit("IDLE", "Ready • Hold Ctrl+Alt to speak")
 
     @Slot()
     def open_settings(self):
@@ -274,12 +313,30 @@ class LifecycleManager(QObject):
 
     def _on_speech_finished(self, audio_data: np.ndarray):
         """Called asynchronously when user finishes speaking (VAD silence detected)."""
+        if self.live_session.is_active:
+            self.sig_set_state.emit("PROCESSING", "Transcribing speech...")
+            def _live_worker():
+                try:
+                    transcript = self.stt_provider.transcribe(audio_data)
+                    if transcript and transcript.strip():
+                        self.live_session.process_turn(transcript)
+                    else:
+                        self.live_session.start_listening()
+                except Exception as e:
+                    print(f"Live STT error: {e}")
+                    self.live_session.start_listening()
+            threading.Thread(target=_live_worker, daemon=True).start()
+            return
+            
         self.sig_set_state.emit("PROCESSING", "Transcribing speech...")
 
         def _worker():
             # 1. Speech to Text
             try:
+                t0 = time.perf_counter()
                 transcript = self.stt_provider.transcribe(audio_data)
+                t_stt = time.perf_counter() - t0
+                print(f"[Profiler] STT (Transcription) latency: {t_stt:.3f}s")
             except Exception as e:
                 print(f"[Lifecycle] STT failed: {e}")
                 transcript = ""
@@ -309,7 +366,11 @@ class LifecycleManager(QObject):
 
             cursor_data = getattr(self, "_latest_cursor_capture", None)
             log_layer(5, "Routing command with cursor context", has_cursor=bool(cursor_data), transcript=transcript)
+            
+            t0 = time.perf_counter()
             intent, result = self.router.route_and_execute(transcript, cursor_data=cursor_data)
+            t_llm = time.perf_counter() - t0
+            print(f"[Profiler] LLM Intent Classification & Action Execution latency: {t_llm:.3f}s")
 
             # Check if confirmation is required OR staged action (email sending, message, reminder)
             is_staged = (
@@ -339,8 +400,12 @@ class LifecycleManager(QObject):
     def _process_result(self, intent, result, transcript: str):
         status_text = result.message
 
+        # Check if job application card needs to be rendered in the notch
+        if result.data and result.data.get("is_job_card"):
+            self.sig_show_job.emit(result.data)
+
         # Check if folder browser view needs to be rendered in the top-center notch
-        if result.data and result.data.get("is_folder_browser"):
+        elif result.data and result.data.get("is_folder_browser"):
             f_name = result.data.get("folder_name", "Folder")
             f_path = result.data.get("folder_path", "")
             items = result.data.get("items", [])
@@ -375,8 +440,6 @@ class LifecycleManager(QObject):
             step_count = 1
             for next_step in result.next_steps:
                 step_count += 1
-                self.sig_action_step.emit(f"Step {step_count}: {next_step}", "⚡", False)
-                time.sleep(1.0) # simulate processing step
                 self.sig_action_step.emit(f"Step {step_count}: {next_step}", "⚡", True)
 
         # Immediately display clean text in top notch HUD
@@ -403,8 +466,16 @@ class LifecycleManager(QObject):
                 result_summary=status_text,
             )
 
-        # Speak the actual answer (result.message), not just the short confirmation
-        spoken_text = status_text
+        # Immediate Google Assistant-style voice response:
+        # Speak the first 1-2 punchy sentences so TTS starts instantly without buffering delay,
+        # while hud_text displays the complete visual card for reading.
+        raw_speech = status_text
+        import re
+        sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", raw_speech) if s.strip()]
+        if len(sentences) > 2:
+            spoken_text = " ".join(sentences[:2])
+        else:
+            spoken_text = raw_speech
 
         def on_tts_finish():
             # Keep notch open so the user can read the complete response
@@ -434,3 +505,12 @@ class LifecycleManager(QObject):
         self.sig_set_state.emit("IDLE", "Action cancelled.")
         QTimer.singleShot(1000, self.sig_disappear.emit)
         QTimer.singleShot(1200, lambda: self.sig_set_state.emit("IDLE", "Ready • Hold Ctrl+Alt to speak"))
+
+    def _on_live_toggled(self, is_live: bool):
+        if is_live:
+            print("[Lifecycle] Starting Gemini Live mode session.")
+            self.live_session.start()
+        else:
+            print("[Lifecycle] Stopping Gemini Live mode session.")
+            self.live_session.stop()
+            self.sig_set_state.emit("IDLE", "Ready • Hold Ctrl+Alt to speak")

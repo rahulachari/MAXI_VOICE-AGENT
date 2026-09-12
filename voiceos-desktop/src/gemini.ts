@@ -26,14 +26,14 @@ export async function processCommandWithGemini(userPrompt: string): Promise<Comm
   const query = userPrompt.trim();
   if (!query) {
     return {
-      spoken_response: "I'm listening. Press and hold Ctrl+Alt to give a command.",
+      spoken_response: "I didn't catch that. Please hold Ctrl+Alt to speak.",
       action: 'none',
       target: ''
     };
   }
 
   const apiKey = await getApiKey();
-  const models = ['gemini-flash-latest', 'gemma-4-26b-a4b-it'];
+  const models = ['gemini-3.6-flash', 'gemini-3.7-flash', 'gemini-3.8-flash', 'gemini-flash-latest'];
 
   const systemInstruction = `You are JARVIS VoiceOS, an elite AI desktop companion.
 Analyze the user's voice command and output ONLY valid JSON in this schema:
@@ -43,55 +43,60 @@ Analyze the user's voice command and output ONLY valid JSON in this schema:
   "target": "full url, search query, or application executable name"
 }
 Examples:
+- "open gmail": {"spoken_response": "Opening your Gmail inbox.", "action": "open_url", "target": "https://mail.google.com"}
 - "open youtube": {"spoken_response": "Opening YouTube for you now, Sir.", "action": "open_url", "target": "https://www.youtube.com"}
 - "open linkedin": {"spoken_response": "Opening your LinkedIn profile.", "action": "open_url", "target": "https://www.linkedin.com"}
+- "open github": {"spoken_response": "Opening GitHub.", "action": "open_url", "target": "https://www.github.com"}
 - "search for quantum computing": {"spoken_response": "Searching Google for quantum computing.", "action": "search_web", "target": "quantum computing"}
 - "open notepad": {"spoken_response": "Launching Notepad.", "action": "launch_app", "target": "notepad"}
 - "open calculator": {"spoken_response": "Opening Calculator.", "action": "launch_app", "target": "calc"}
 `;
 
-  for (const model of models) {
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-      const payload = {
-        contents: [
-          {
-            parts: [
-              { text: `${systemInstruction}\n\nUser command: "${query}"` }
-            ]
+  if (apiKey) {
+    for (const model of models) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const payload = {
+          contents: [
+            {
+              parts: [
+                { text: `${systemInstruction}\n\nUser command: "${query}"` }
+              ]
+            }
+          ],
+          generationConfig: {
+            response_mime_type: "application/json"
           }
-        ],
-        generationConfig: {
-          response_mime_type: "application/json"
-        }
-      };
+        };
 
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
 
-      if (res.ok) {
-        const data = await res.json();
-        const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (textResponse) {
-          // Parse JSON from response
-          const cleanJson = textResponse.replace(/```json/g, '').replace(/```/g, '').trim();
-          const parsed = JSON.parse(cleanJson) as CommandResult;
-          if (parsed.spoken_response) {
-            return parsed;
+        if (res.ok) {
+          const data = await res.json();
+          const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (textResponse) {
+            const cleanJson = textResponse.replace(/```json/g, '').replace(/```/g, '').trim();
+            const parsed = JSON.parse(cleanJson) as CommandResult;
+            if (parsed.spoken_response) {
+              return parsed;
+            }
           }
         }
+      } catch (err) {
+        console.warn(`Model ${model} request error:`, err);
       }
-    } catch (err) {
-      console.warn(`Model ${model} request error:`, err);
     }
   }
 
-  // Fast offline/fallback rule-based intent engine if network/quota is constrained
+  // Fast offline/fallback rule-based intent engine
   const lower = query.toLowerCase();
-  if (lower.includes('youtube')) {
+  if (lower.includes('gmail') || lower.includes('google mail')) {
+    return { spoken_response: "Opening your Gmail inbox.", action: "open_url", target: "https://mail.google.com" };
+  } else if (lower.includes('youtube')) {
     return { spoken_response: "Opening YouTube.", action: "open_url", target: "https://www.youtube.com" };
   } else if (lower.includes('linkedin')) {
     return { spoken_response: "Opening LinkedIn.", action: "open_url", target: "https://www.linkedin.com" };
@@ -101,6 +106,10 @@ Examples:
     return { spoken_response: "Launching Notepad.", action: "launch_app", target: "notepad" };
   } else if (lower.includes('calc') || lower.includes('calculator')) {
     return { spoken_response: "Opening Calculator.", action: "launch_app", target: "calc" };
+  } else if (lower.includes('calendar')) {
+    return { spoken_response: "Opening Google Calendar.", action: "open_url", target: "https://calendar.google.com" };
+  } else if (lower.includes('apply for this') || lower.includes('apply for the job') || lower.includes('apply job')) {
+    return { spoken_response: "Analyzing job posting on screen, matching resume projects, and generating your application package.", action: "none", target: "" };
   } else if (lower.startsWith('search ') || lower.startsWith('google ')) {
     const q = query.replace(/^(search\s+for|search|google)\s+/i, '');
     return { spoken_response: `Searching Google for ${q}.`, action: "search_web", target: q };
@@ -123,7 +132,6 @@ export function speakResponse(text: string) {
   utterance.rate = 1.05;
   utterance.pitch = 1.0;
   
-  // Choose high quality English voice if available
   const voices = window.speechSynthesis.getVoices();
   const preferred = voices.find(v => v.name.includes('Natural') || v.name.includes('Guy') || v.name.includes('David') || v.lang.startsWith('en'));
   if (preferred) {

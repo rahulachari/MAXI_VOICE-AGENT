@@ -39,6 +39,15 @@ POPULAR_SITES = {
     "wikipedia": "https://en.wikipedia.org",
     "stack overflow": "https://stackoverflow.com",
     "stackoverflow": "https://stackoverflow.com",
+    "portfolio": "https://rahulachariportfolio.vercel.app/",
+    "my portfolio": "https://rahulachariportfolio.vercel.app/",
+    "propcast": "https://propcast-oyan.onrender.com",
+    "prop cast": "https://propcast-oyan.onrender.com",
+    "uniml": "https://uniml.onrender.com",
+    "uni ml": "https://uniml.onrender.com",
+    "controld": "https://controld-three.vercel.app/login",
+    "control d": "https://controld-three.vercel.app/login",
+    "control-d": "https://controld-three.vercel.app/login",
 }
 
 
@@ -58,6 +67,120 @@ class LocalSemanticEngine:
         # ===================================================================
         if text in ["stop", "cancel", "abort", "never mind", "quit", "pause", "shut up", "be quiet", "enough"]:
             return Intent(category=IntentCategory.CANCEL, action="cancel")
+
+        # ===================================================================
+        # 1.1. User Portfolio & Projects Navigation
+        # ===================================================================
+        if re.search(r"\b(?:open|launch|show|go to)\s+(?:my\s+)?portfolio\b", text):
+            return Intent(category=IntentCategory.WEB_NAVIGATION, target="Portfolio", action="open_url", params={"url": "https://rahulachariportfolio.vercel.app/"})
+
+        if re.search(r"\b(?:open|launch|go to)\s+(?:my\s+)?prop\s*cast(?:\s+live|\s+app)?\b", text):
+            if "github" in text:
+                return Intent(category=IntentCategory.WEB_NAVIGATION, target="PropCast GitHub", action="open_url", params={"url": "https://github.com/rahulachari/PropCast"})
+            return Intent(category=IntentCategory.WEB_NAVIGATION, target="PropCast", action="open_url", params={"url": "https://propcast-oyan.onrender.com"})
+
+        if re.search(r"\b(?:open|launch|go to)\s+(?:my\s+)?uni\s*ml(?:\s+live|\s+app)?\b", text):
+            if "github" in text:
+                return Intent(category=IntentCategory.WEB_NAVIGATION, target="UniML GitHub", action="open_url", params={"url": "https://github.com/rahulachari/UniML"})
+            return Intent(category=IntentCategory.WEB_NAVIGATION, target="UniML", action="open_url", params={"url": "https://uniml.onrender.com"})
+
+        if re.search(r"\b(?:open|launch|go to)\s+(?:my\s+)?control\s*[- ]?d(?:\s+live|\s+app)?\b", text):
+            if "github" in text:
+                return Intent(category=IntentCategory.WEB_NAVIGATION, target="ControL-D GitHub", action="open_url", params={"url": "https://github.com/rahulachari/ControL-D"})
+            return Intent(category=IntentCategory.WEB_NAVIGATION, target="ControL-D", action="open_url", params={"url": "https://controld-three.vercel.app/login"})
+
+        if re.search(r"\b(?:open|show|go to)\s+my\s+github\b", text):
+            return Intent(category=IntentCategory.WEB_NAVIGATION, target="GitHub", action="open_url", params={"url": "https://github.com/rahulachari"})
+
+        if re.search(r"\b(?:open|show|go to)\s+my\s+linkedin\b", text):
+            return Intent(category=IntentCategory.WEB_NAVIGATION, target="LinkedIn", action="open_url", params={"url": "https://www.linkedin.com/in/rahulyc/"})
+
+        # ===================================================================
+        # 1.2. Autonomous Job Application & Resume Autofill / Paste
+        # ===================================================================
+        if re.search(r"\b(?:paste\s+(?:my\s+|the\s+)?resume|paste\s+resume\s+here)\b", text):
+            return Intent(category=IntentCategory.JOB_APPLICATION, target="JobAgent", action="paste_resume", params={})
+
+        if re.search(r"\b(?:apply\s+(?:for|to)\s+(?:this|the|a)?\s*job|apply\s+for\s+this|apply\s+now|autofill\s+job|fill\s+application)\b", text):
+            return Intent(category=IntentCategory.JOB_APPLICATION, target="JobAgent", action="apply_for_job", params={})
+
+        if re.search(r"\b(?:what\s+is\s+my\s+resume|show\s+my\s+resume|view\s+my\s+resume|check\s+my\s+resume|my\s+resume\s+details)\b", text):
+            return Intent(category=IntentCategory.JOB_APPLICATION, target="JobAgent", action="get_profile", params={})
+
+        # ===================================================================
+        # 1.3. Universal Web & Multi-Platform Search (High Priority)
+        # Guarantees commands like "search for iPhone 18 Pro", "google...",
+        # "look up...", "search amazon for..." are IMMEDIATELY routed to search,
+        # never colliding with calls or messaging.
+        # ===================================================================
+
+        # Explicit YouTube search: "search for [query] on youtube", "search youtube for [query]"
+        if "youtube" in text and ("search" in text or text.startswith("play ")):
+            yt_m = re.search(r"^(?:search\s+(?:on\s+)?youtube\s+for|search\s+for\s+(.+?)\s+on\s+youtube|search\s+(.+?)\s+on\s+youtube|youtube\s+search\s+(?:for\s+)?)(.+)$", text, re.IGNORECASE)
+            q = ""
+            if yt_m:
+                q = (yt_m.group(1) or yt_m.group(2) or yt_m.group(3) or "").strip()
+            elif "search" in text:
+                q = text.replace("search for", "").replace("search", "").replace("on youtube", "").replace("youtube", "").strip()
+            if q and q != "youtube":
+                return Intent(category=IntentCategory.WEB_SEARCH, target="YouTube", action="search_youtube", params={"query": q})
+
+        # Explicit Amazon search: "search for iphone 18 pro on amazon", "buy ... on amazon", "search amazon for ..."
+        if "amazon" in text and ("search" in text or "buy" in text or "price" in text or "find" in text or "look" in text):
+            q = re.sub(r"^(?:search\s+(?:on\s+)?amazon\s+for|search\s+amazon\s+for|search\s+for|search|buy|find|look\s+up)\s+", "", text, flags=re.IGNORECASE)
+            q = re.sub(r"\s+on\s+amazon$", "", q, flags=re.IGNORECASE).strip()
+            if q and q != "amazon":
+                return Intent(category=IntentCategory.WEB_SEARCH, target="Amazon", action="search_amazon", params={"query": q})
+
+        # Explicit Flipkart search: "search for iphone 18 pro on flipkart", "search flipkart for ..."
+        if "flipkart" in text and ("search" in text or "buy" in text or "price" in text or "find" in text):
+            q = re.sub(r"^(?:search\s+(?:on\s+)?flipkart\s+for|search\s+flipkart\s+for|search\s+for|search|buy|find)\s+", "", text, flags=re.IGNORECASE)
+            q = re.sub(r"\s+on\s+flipkart$", "", q, flags=re.IGNORECASE).strip()
+            if q and q != "flipkart":
+                return Intent(category=IntentCategory.WEB_SEARCH, target="Flipkart", action="search_flipkart", params={"query": q})
+
+        # Explicit GitHub search: "search github for ...", "search for ... on github"
+        if "github" in text and "search" in text:
+            q = re.sub(r"^(?:search\s+(?:on\s+)?github\s+for|search\s+github\s+for|search\s+for|search)\s+", "", text, flags=re.IGNORECASE)
+            q = re.sub(r"\s+on\s+github$", "", q, flags=re.IGNORECASE).strip()
+            if q and q != "github":
+                return Intent(category=IntentCategory.WEB_SEARCH, target="GitHub", action="search_github", params={"query": q})
+
+        # Explicit Reddit search: "search reddit for ...", "search for ... on reddit"
+        if "reddit" in text and "search" in text:
+            q = re.sub(r"^(?:search\s+(?:on\s+)?reddit\s+for|search\s+reddit\s+for|search\s+for|search)\s+", "", text, flags=re.IGNORECASE)
+            q = re.sub(r"\s+on\s+reddit$", "", q, flags=re.IGNORECASE).strip()
+            if q and q != "reddit":
+                return Intent(category=IntentCategory.WEB_SEARCH, target="Reddit", action="search_reddit", params={"query": q})
+
+        # Explicit Wikipedia search: "search wikipedia for ...", "search for ... on wikipedia"
+        if "wikipedia" in text and "search" in text:
+            q = re.sub(r"^(?:search\s+(?:on\s+)?wikipedia\s+for|search\s+wikipedia\s+for|search\s+for|search)\s+", "", text, flags=re.IGNORECASE)
+            q = re.sub(r"\s+on\s+wikipedia$", "", q, flags=re.IGNORECASE).strip()
+            if q and q != "wikipedia":
+                return Intent(category=IntentCategory.WEB_SEARCH, target="Wikipedia", action="search_wikipedia", params={"query": q})
+
+        # Universal Web / Google Search:
+        # Handles:
+        # - "search for iphone 18 pro"
+        # - "search for the iphone 18 pro"
+        # - "search for quantum computing"
+        # - "search google for quantum computing"
+        # - "google iphone 18 pro"
+        # - "search web for latest AI news"
+        # - "search the web for ..."
+        # - "look up iphone 18 pro"
+        # - "lookup iphone 18 pro specs"
+        # - "search [anything]" (except local file queries)
+        web_search_pattern = r"^(?:search\s+(?:google\s+for|on\s+google\s+for|the\s+web\s+for|web\s+for|internet\s+for|the\s+internet\s+for|for\s+(?:the\s+)?|for\s+|online\s+for\s+)|google\s+|look\s+up\s+|lookup\s+|browse\s+for\s+|search\s+)(.+)$"
+        web_search_match = re.search(web_search_pattern, text, re.IGNORECASE)
+        if web_search_match:
+            q = web_search_match.group(1).strip()
+            # Clean trailing search terms
+            q = re.sub(r"\s+(?:on|in)\s+google$", "", q, flags=re.IGNORECASE).strip()
+            # Guard against local file search commands: "search for file test.py" or "search for folder notes"
+            if not q.startswith("file ") and not q.startswith("folder ") and q != "file" and q != "folder":
+                return Intent(category=IntentCategory.WEB_SEARCH, target="Google", action="search_google", params={"query": q})
 
         # 2. Greetings and Identity
         if text in ["hello", "hi", "hey", "good morning", "good evening", "good afternoon", "how are you", "what's up", "hey there"]:
@@ -129,6 +252,24 @@ class LocalSemanticEngine:
                 action="send_whatsapp",
                 params={"contact": contact, "message": message_body},
             )
+
+        call_match = re.search(r"^(?:call|voice\s+call|video\s+call|ring)\s+(.+?)(?:\s+on\s+(?:whatsapp|whats\s*app|phone))?$", text, re.IGNORECASE)
+        if call_match:
+            contact = call_match.group(1).strip()
+            return Intent(
+                category=IntentCategory.MESSAGING,
+                target="WhatsApp",
+                action="call_contact",
+                params={"contact": contact},
+                requires_confirmation=True,
+                confirmation_prompt=f"Calling {contact.title()} on WhatsApp.",
+            )
+
+        # "share this file to whatsapp"
+        share_match = re.search(r"share\s+(?:this|the|my)\s+(?:file|document|image|video|photo)\s+(?:on|to|in)\s+(?:whatsapp|whats app)(?:\s+(?:for|to)\s+(.+))?", text, re.IGNORECASE)
+        if share_match:
+            contact = share_match.group(1) or ""
+            return Intent(category=IntentCategory.MESSAGING, target="WhatsApp", action="share_file_whatsapp", params={"contact": contact.strip()})
 
         # "open whatsapp" (Desktop app)
         if re.search(r"\b(open|launch|start)\s+(?:whatsapp|whats app)\b", text, re.IGNORECASE):
@@ -271,17 +412,26 @@ class LocalSemanticEngine:
 
         # ===================================================================
         # 8. Phone Call (via WhatsApp or link)
+        # Strict pattern: MUST explicitly begin with an actual call command (e.g. "call Rahul")
+        # Never match devices like "iphone", "headphone", "earphone", or search phrases.
         # ===================================================================
 
-        call_match = re.search(r"(?:call|phone|ring)\s+(.+?)(?:\s+on\s+(?:whatsapp|whats app))?$", text)
+        call_match = re.search(r"^(?:make\s+(?:a\s+)?(?:phone\s+)?call\s+to|call|phone|ring)\s+([a-zA-Z\s]+?)(?:\s+on\s+(?:whatsapp|whats app))?$", text, re.IGNORECASE)
         if call_match:
             contact = call_match.group(1).strip()
-            if contact not in ["mom", "dad", "me"] and len(contact) > 1:
+            contact_lower = contact.lower()
+            non_contacts = {
+                "iphone", "phone", "headphone", "headphones", "earphone", "earphones",
+                "microphone", "smartphone", "smartphones", "cellphone", "android", "mobile",
+                "it", "me", "this", "that", "them", "him", "her", "someone", "anyone", "number",
+                "18 pro", "17 pro", "16 pro", "15 pro", "14 pro", "police", "help", "jarvis", "google"
+            }
+            if contact_lower not in non_contacts and not any(dev in contact_lower for dev in ["iphone", "pixel", "galaxy", "headphone", "earphone"]):
                 return Intent(
                     category=IntentCategory.PHONE_CALL,
                     target="WhatsApp",
                     action="call_contact",
-                    params={"contact": contact},
+                    params={"contact": contact.title()},
                 )
 
         # ===================================================================
@@ -349,8 +499,15 @@ class LocalSemanticEngine:
         if text in ["previous", "previous song", "previous track", "go back", "last song"]:
             return Intent(category=IntentCategory.MEDIA_CONTROL, action="previous_track")
 
+        # "open [app] and play [song/movie]"
+        open_and_play = re.search(r"^(?:open|launch)\s+([a-zA-Z0-9\s]+?)\s+and\s+play\s+(.+)$", text)
+        if open_and_play:
+            platform = open_and_play.group(1).strip()
+            query = open_and_play.group(2).strip()
+            return Intent(category=IntentCategory.WEB_NAVIGATION, target="Browser", action="lucky_search", params={"query": f"watch {query} on {platform}"})
+
         # "play [song] on youtube/spotify" or "play [song]"
-        play_match = re.search(r"^play\s+(.+?)(?:\s+on\s+(youtube|spotify))?$", text)
+        play_match = re.search(r"^play\s+(.+?)(?:\s+on\s+([a-zA-Z0-9\s]+))?$", text)
         if play_match and text.startswith("play "):
             query = play_match.group(1).strip()
             platform = (play_match.group(2) or "").lower()
@@ -362,6 +519,8 @@ class LocalSemanticEngine:
             elif platform == "youtube" or "youtube" in query.lower():
                 clean_q = re.sub(r"\b(on\s+youtube|in\s+youtube|youtube)\b", "", query, flags=re.IGNORECASE).strip()
                 return Intent(category=IntentCategory.MUSIC, target="YouTube", action="play_youtube", params={"query": clean_q or query})
+            elif platform:
+                return Intent(category=IntentCategory.WEB_NAVIGATION, target="Browser", action="lucky_search", params={"query": f"watch {query} on {platform}"})
             else:
                 # Default music query to YouTube playback for direct audio/video streaming
                 return Intent(category=IntentCategory.MUSIC, target="YouTube", action="play_youtube", params={"query": query})
@@ -460,6 +619,15 @@ class LocalSemanticEngine:
         if url_match:
             return Intent(category=IntentCategory.WEB_NAVIGATION, target="Browser", action="open_url", params={"url": url_match.group(2)})
 
+        # Open generic website: "open movie rules", "open net mirror"
+        generic_open_match = re.search(r"^(?:please\s+|can\s+you\s+)?(?:open|launch|go\s+to|start)\s+([a-zA-Z0-9\s]+?)(?:\s+website|site)?$", text)
+        if generic_open_match:
+            site_query = generic_open_match.group(1).strip()
+            if site_query not in ["the", "my", "a"]:
+                # Exclude local folders handled earlier, though they are usually caught by earlier regexes
+                if site_query not in ["downloads", "screenshots", "desktop", "documents", "pictures", "videos", "music", "settings", "file explorer", "whatsapp", "this pc"]:
+                    return Intent(category=IntentCategory.WEB_NAVIGATION, target="Browser", action="lucky_search", params={"query": site_query})
+
         # Scrolling
         if "scroll down" in text:
             return Intent(category=IntentCategory.BROWSER_ACTION, action="scroll_down")
@@ -488,28 +656,67 @@ class LocalSemanticEngine:
         if text in ["open task manager", "task manager", "launch task manager"]:
             return Intent(category=IntentCategory.KEYBOARD_SHORTCUT, action="hotkey", params={"keys": ["ctrl", "shift", "escape"]})
 
-        # Any "open X folder" pattern -> route to filesystem
-        folder_match = re.search(r"(?:open|show|launch)\s+(my\s+)?(.+?)(?:\s+folder|\s+directory|\s+files)$", text)
-        if folder_match:
-            folder_name = folder_match.group(2).strip()
-            return Intent(category=IntentCategory.FILE_OPEN, target="Filesystem", action="open_folder", params={"folder": folder_name})
+        # ===================================================================
+        # 18. File & Folder Opening
+        # Matches:
+        # - "open the video file", "open video file", "open videos", "open video folder"
+        # - "open the screenshot file", "open screenshot file", "open screenshots", "open screenshot folder"
+        # - "open the movies file", "open movie file", "open movies", "open movies folder"
+        # - "open the downloads file", "open download file", "open downloads"
+        # - "open the documents file", "open documents"
+        # - "open the pictures file", "open pictures", "open photos"
+        # - "open the music file", "open music", "open songs"
+        # - "open the desktop file", "open desktop"
+        # ===================================================================
 
-        # Known system folders by name alone
-        known_folder_match = re.search(r"open\s+(my\s+)?(downloads|documents|pictures|screenshots|videos|music|desktop|movies)$", text)
-        if known_folder_match:
-            folder_name = known_folder_match.group(2).strip()
-            return Intent(category=IntentCategory.FILE_OPEN, target="Filesystem", action="open_folder", params={"folder": folder_name})
+        file_folder_match = re.search(
+            r"^(?:open|show|launch|view)\s+(?:the\s+|my\s+)?(video|videos|screenshot|screenshots|movie|movies|film|films|download|downloads|document|documents|picture|pictures|photo|photos|image|images|music|song|songs|desktop)(?:\s+file|\s+files|\s+folder|\s+directory)?$",
+            text,
+            re.IGNORECASE
+        )
+        if file_folder_match:
+            folder_target = file_folder_match.group(1).lower()
+            if "file" in text or "image" in text or "photo" in text or "song" in text:
+                return Intent(category=IntentCategory.FILE_OPEN, target="Filesystem", action="open_latest_file", params={"folder": folder_target})
+            return Intent(category=IntentCategory.FILE_OPEN, target="Filesystem", action="open_folder", params={"folder": folder_target})
+
+        # Any explicit folder or directory command: "open project folder", "open client files directory"
+        generic_folder_match = re.search(r"^(?:open|show|launch|view)\s+(?:the\s+|my\s+)?(.+?)\s+(?:folder|directory)$", text, re.IGNORECASE)
+        if generic_folder_match:
+            f_name = generic_folder_match.group(1).strip()
+            return Intent(category=IntentCategory.FILE_OPEN, target="Filesystem", action="open_folder", params={"folder": f_name})
+
+        # "open [name] file" / "open the [name] file" (e.g. "open resume file", "open notes file")
+        specific_file_match = re.search(
+            r"^(?:open|show|launch|view)\s+(?:the\s+|my\s+)?([a-zA-Z0-9_\-\.\s]+?)\s+(?:file|document|pdf|script|sheet)$",
+            text,
+            re.IGNORECASE
+        )
+        if specific_file_match:
+            q = specific_file_match.group(1).strip()
+            if q and q not in ["a", "the", "my"]:
+                return Intent(category=IntentCategory.FILE_OPEN, target="Filesystem", action="open_file", params={"query": q})
+
+        # File with extension: "open resume.pdf", "open test.py", "open data.xlsx"
+        ext_file_match = re.search(
+            r"^(?:open|launch)\s+(?:the\s+|my\s+)?([a-zA-Z0-9_\-]+\.(?:pdf|txt|docx|doc|xlsx|csv|py|js|ts|json|png|jpg|jpeg|mp4|mkv|avi|zip))$",
+            text,
+            re.IGNORECASE
+        )
+        if ext_file_match:
+            q = ext_file_match.group(1).strip()
+            return Intent(category=IntentCategory.FILE_OPEN, target="Filesystem", action="open_file", params={"query": q})
 
         launch_match = re.search(r"^(open|launch|start|run)\s+([a-zA-Z0-9\s]+)$", text)
         if launch_match:
             app_raw = launch_match.group(2).strip()
-            # Skip calendar and cursor-linkedin commands here
-            if "calendar" in app_raw or "linkedin" in app_raw:
+            # Skip calendar, portfolio, and linkedin commands here
+            if "calendar" in app_raw or "linkedin" in app_raw or "portfolio" in app_raw:
                 pass
             elif app_raw not in POPULAR_SITES:
-                # Check if it's a file request
-                if "my " in app_raw or (app_raw.startswith("file") and app_raw != "files") or app_raw.endswith((".pdf", ".txt", ".docx", ".png")):
-                    query = app_raw.replace("my ", "").replace("file", "").strip()
+                # Check if it's an explicit file request
+                if "file" in app_raw or app_raw.endswith((".pdf", ".txt", ".docx", ".png")):
+                    query = app_raw.replace("my ", "").replace("the ", "").replace("file", "").strip()
                     return Intent(category=IntentCategory.FILE_OPEN, target="Filesystem", action="open_file", params={"query": query})
 
                 return Intent(category=IntentCategory.APP_LAUNCH, target=app_raw.title(), action="launch_app", params={"app_name": app_raw})
@@ -529,20 +736,39 @@ class LocalSemanticEngine:
         # 19. Screen & Cursor Vision (Point Anywhere on Screen)
         # ===================================================================
 
-        # Point and ask: "find his LinkedIn", "open his LinkedIn", "find this person's LinkedIn"
-        if re.search(r"\b(?:find|open|show|get|search|look\s+up)\s+(?:his|her|their|this\s+person'?s?)\s+linkedin\b", text):
+        # Point and ask: "find his LinkedIn", "open his LinkedIn", "find this person's LinkedIn", "find linkedin"
+        if re.search(r"\b(?:find|open|show|get|search|look\s+up|pull\s+up|check)\s+(?:his|her|their|this\s+person'?s?|the|a)?\s*linkedin\b", text) or \
+           re.search(r"\b(?:find|search|look\s+up)\s+linkedin\b", text) or \
+           re.search(r"\bcan\s+you\s+find\s+(?:the\s+linkedin\s+of|his|her|their\s+linkedin|linkedin)\b", text) or \
+           re.search(r"\blinkedin\s+profile\b", text):
             return Intent(
                 category=IntentCategory.CURSOR_ANALYSIS,
                 action="find_linkedin",
-                params={"prompt": "Extract the person or founder's name under or nearest to the cursor to find their LinkedIn profile."},
+                params={"prompt": "Extract the person's full name and company/title from the text visible near the cursor. Respond strictly with 'Name - Company/Title'. If no name is clearly identifiable in the text, respond strictly with 'NO_NAME_FOUND'."},
             )
 
-        # Point and ask: "what is this", "who is this", "explain this", "what does this mean", "summarize this"
-        if re.search(r"\b(?:what\s+is\s+this|what'?s\s+this|who\s+is\s+this|what\s+does\s+this\s+(?:mean|do)|explain\s+this|describe\s+this|summarize\s+this|read\s+this|what\s+am\s+i\s+(?:looking|pointing)\s+at)\b", text):
-            return Intent(category=IntentCategory.CURSOR_ANALYSIS, action="analyze", params={"prompt": text})
+        # Point and ask: "what is this", "who is this", "explain this", "read this", "read what's on my screen", "what am I pointing at"
+        if re.search(r"\b(?:what\s+is\s+this|what'?s\s+this|who\s+is\s+this|who'?s\s+this|what\s+does\s+this\s+(?:mean|do)|explain\s+this|describe\s+this|summarize\s+this|read\s+this|read\s+(?:what'?s\s+on\s+my\s+screen|my\s+screen|this\s+screen|the\s+screen)|what\s+am\s+i\s+(?:looking|pointing)\s+at|read\s+what\s+i'?m\s+pointing\s+at|what'?s\s+under\s+(?:my\s+)?cursor)\b", text):
+            return Intent(category=IntentCategory.CURSOR_ANALYSIS, action="analyze", params={"prompt": "Identify the subject or text at the cursor (text, code, diagram, button, person, object) and give a concise, useful explanation or read what is written."})
+
+        # Deep Explanation (Knowledge/Interview Prep)
+        deep_match = re.search(r"^(?:explain\s+(?:to\s+me\s+)?|what\s+is\s+|tell\s+me\s+about\s+|prepare\s+me\s+for\s+|prep\s+me\s+for\s+|what\s+do\s+you\s+know\s+about\s+)(.+)$", text, re.IGNORECASE)
+        # We need to make sure it doesn't conflict with screen commands
+        if deep_match and "screen" not in text and "this" not in text.split() and "page" not in text:
+            topic = deep_match.group(1).strip()
+            return Intent(category=IntentCategory.DEEP_EXPLANATION, target="AIQuery", action="deep_explanation", params={"topic": topic})
+
+        # ===================================================================
+        # 19.5. Autonomous Job Application Agent ("Apply for this")
+        # ===================================================================
+        if re.search(r"\b(?:apply\s+(?:for\s+)?(?:this\s+)?(?:job|role|position)|apply\s+for\s+this|apply\s+to\s+this|apply\s+here|auto\s*apply|fill\s+(?:this\s+)?(?:application|form)|apply\s+now)\b", text):
+            return Intent(category=IntentCategory.JOB_APPLICATION, target="JobApplicant", action="apply_for_job", params={})
+
+        if re.search(r"\b(?:show|view|get|check|display)\s+(?:my\s+)?(?:resume|profile|details|projects)\b|\b(?:what\s+is\s+on\s+my\s+resume|my\s+resume)\b", text):
+            return Intent(category=IntentCategory.JOB_APPLICATION, target="JobApplicant", action="get_profile", params={})
 
         # Full screen analysis: "what's on my screen", "explain this page"
-        if text in ["what is on my screen", "explain this page", "read this error", "what is on my screen?", "analyze screen", "read screen", "what's on my screen"]:
+        if re.search(r"\b(?:what\s+is\s+on\s+my\s+screen|what'?s\s+on\s+my\s+screen|explain\s+this\s+page|read\s+this\s+error|analyze\s+screen|read\s+screen|explain\s+screen)\b", text):
             return Intent(category=IntentCategory.SCREEN_ANALYSIS, action="analyze", params={"prompt": text})
 
         # ===================================================================

@@ -59,8 +59,86 @@ class BrowserTool(BaseTool):
             ChromeAdapter.open_url(url)
             return ToolResult(
                 status="SUCCESS",
-                message=f"Here is what I found for {query}.",
+                message=f"Searching Google for {query}.",
                 data={"query": query, "url": url, "full_details": f"🔍 Google Search: {query}"},
+            )
+
+        elif action == "lucky_search":
+            query = kwargs.get("query", "")
+            if not query:
+                return ToolResult(status="FAILED", message="What would you like to open?")
+            import urllib.parse
+            # DuckDuckGo 'I'm Feeling Lucky' equivalent uses !ducky bang
+            url = f"https://duckduckgo.com/?q={urllib.parse.quote_plus('!ducky ' + query)}"
+            ChromeAdapter.open_url(url)
+            return ToolResult(
+                status="SUCCESS",
+                message=f"Opening {query}.",
+                data={"query": query, "url": url, "full_details": f"🌐 Opening: {query}"},
+            )
+        elif action == "search_amazon":
+            query = kwargs.get("query", "")
+            if not query:
+                return ToolResult(status="FAILED", message="What would you like to search on Amazon?")
+            import urllib.parse
+            url = f"https://www.amazon.in/s?k={urllib.parse.quote_plus(query)}"
+            ChromeAdapter.open_url(url)
+            return ToolResult(
+                status="SUCCESS",
+                message=f"Searching Amazon for {query}.",
+                data={"query": query, "url": url, "full_details": f"🛒 Amazon Search: {query}"},
+            )
+
+        elif action == "search_flipkart":
+            query = kwargs.get("query", "")
+            if not query:
+                return ToolResult(status="FAILED", message="What would you like to search on Flipkart?")
+            import urllib.parse
+            url = f"https://www.flipkart.com/search?q={urllib.parse.quote_plus(query)}"
+            ChromeAdapter.open_url(url)
+            return ToolResult(
+                status="SUCCESS",
+                message=f"Searching Flipkart for {query}.",
+                data={"query": query, "url": url, "full_details": f"🛍️ Flipkart Search: {query}"},
+            )
+
+        elif action == "search_github":
+            query = kwargs.get("query", "")
+            if not query:
+                return ToolResult(status="FAILED", message="What would you like to search on GitHub?")
+            import urllib.parse
+            url = f"https://github.com/search?q={urllib.parse.quote_plus(query)}"
+            ChromeAdapter.open_url(url)
+            return ToolResult(
+                status="SUCCESS",
+                message=f"Searching GitHub for {query}.",
+                data={"query": query, "url": url, "full_details": f"🐙 GitHub Search: {query}"},
+            )
+
+        elif action == "search_reddit":
+            query = kwargs.get("query", "")
+            if not query:
+                return ToolResult(status="FAILED", message="What would you like to search on Reddit?")
+            import urllib.parse
+            url = f"https://www.reddit.com/search/?q={urllib.parse.quote_plus(query)}"
+            ChromeAdapter.open_url(url)
+            return ToolResult(
+                status="SUCCESS",
+                message=f"Searching Reddit for {query}.",
+                data={"query": query, "url": url, "full_details": f"👽 Reddit Search: {query}"},
+            )
+
+        elif action == "search_wikipedia":
+            query = kwargs.get("query", "")
+            if not query:
+                return ToolResult(status="FAILED", message="What would you like to search on Wikipedia?")
+            import urllib.parse
+            url = f"https://en.wikipedia.org/wiki/Special:Search?search={urllib.parse.quote_plus(query)}"
+            ChromeAdapter.open_url(url)
+            return ToolResult(
+                status="SUCCESS",
+                message=f"Searching Wikipedia for {query}.",
+                data={"query": query, "url": url, "full_details": f"📖 Wikipedia Search: {query}"},
             )
 
         elif action == "open_url":

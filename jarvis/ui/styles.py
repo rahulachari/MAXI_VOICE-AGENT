@@ -4,18 +4,18 @@ Deep Black Obsidian Glassmorphism with Apple Liquid Glass Specular Aesthetics.
 Status chips, app-specific badges, and VoiceOS-style typography.
 """
 
-# Color Palette Tokens - OLED Black Minimal WatchOS Style
-COLOR_BACKGROUND_GLASS = "rgba(0, 0, 0, 0.95)"
-COLOR_CARD_GLASS = "rgba(8, 8, 8, 0.98)"
+# Color Palette Tokens - OLED Black Minimal Style (Zero glow)
+COLOR_BACKGROUND_GLASS = "#000000"
+COLOR_CARD_GLASS = "#000000"
 
 COLOR_TEXT_PRIMARY = "#ffffff"
 COLOR_TEXT_SECONDARY = "#a1a1aa"
 COLOR_TEXT_MUTED = "#52525b"
 
-COLOR_BORDER_GLASS = "rgba(255, 255, 255, 0.05)"
-COLOR_BORDER_RIM = "rgba(255, 255, 255, 0.08)"
-COLOR_ACCENT_CYAN = "#00f0ff"
-COLOR_ACCENT_BLUE = "#38bdf8"
+COLOR_BORDER_GLASS = "#18181b"
+COLOR_BORDER_RIM = "#1c1c1e"
+COLOR_ACCENT_CYAN = "#38bdf8"
+COLOR_ACCENT_BLUE = "#3b82f6"
 
 # VoiceOS Font Stack
 FONT_STACK = "'Segoe UI Variable Display', 'Segoe UI', -apple-system, 'SF Pro Display', Roboto, sans-serif"
@@ -23,9 +23,9 @@ FONT_MONO = "'Cascadia Code', 'DM Mono', 'SF Mono', 'Consolas', monospace"
 
 NOTCH_BASE_STYLE = f"""
 QFrame#NotchContainer {{
-    background: rgba(18, 20, 26, 0.94);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 40px;
+    background: #000000;
+    border: 1px solid #161616;
+    border-radius: 24px;
 }}
 
 QLabel {{
@@ -89,9 +89,8 @@ QLabel#StatusChipDone {{
 
 ACTION_CARD_STYLE = f"""
 QFrame#ActionCard {{
-    background: {COLOR_CARD_GLASS};
-    border: 1px solid rgba(255, 255, 255, 0.16);
-    border-top: 1.5px solid rgba(255, 255, 255, 0.35);
+    background: #000000;
+    border: 1px solid #1c1c1e;
     border-radius: 16px;
 }}
 

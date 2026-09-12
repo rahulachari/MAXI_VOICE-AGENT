@@ -37,6 +37,10 @@ class VisionTool(BaseTool):
 
         action_name = (action or "").lower().strip()
 
+        if action_name == "find_linkedin":
+            b64_image = base64.b64encode(image_bytes).decode("utf-8") if image_bytes else ""
+            return self._find_linkedin(b64_image, text_hint)
+
         if not image_bytes:
             log_layer(4, "No image bytes received for vision analysis", action=action_name, text_hint=bool(text_hint))
             if text_hint:
@@ -54,9 +58,6 @@ class VisionTool(BaseTool):
         # In-memory base64 encoding
         b64_image = base64.b64encode(image_bytes).decode("utf-8")
         log_layer(4, "Starting content extraction", action=action_name, b64_len=len(b64_image), text_hint=text_hint[:60] if text_hint else "none")
-
-        if action_name == "find_linkedin":
-            return self._find_linkedin(b64_image, text_hint)
 
         gemini_key = config.get("gemini_api_key")
         if gemini_key:
@@ -85,64 +86,57 @@ class VisionTool(BaseTool):
     def _find_linkedin(self, b64_image: str, text_hint: str = "") -> ToolResult:
         """Extracts person/company name near cursor and launches their LinkedIn search."""
         import urllib.parse
-        import webbrowser
+        import urllib.request
+        import re
+        from jarvis.utils.text_cleaner import clean_for_plain_text
 
         gemini_key = config.get("gemini_api_key")
         person_name = ""
 
-        if gemini_key:
+        if gemini_key and b64_image:
             prompt = (
-                "Look directly at the center of this screenshot where the user is pointing. "
-                "Extract ONLY the person's full name (or company name if it's a company). "
-                "Respond strictly with the name only. No punctuation, no commentary, no quotes."
+                "Extract the person's full name and company/title from the text visible near the center of the image. "
+                "Respond strictly with 'Name - Company/Title'. If no name is clearly identifiable in the text, respond strictly with 'NO_NAME_FOUND'."
             )
             res = self._analyze_with_gemini(b64_image, "image/jpeg", prompt, gemini_key)
             if res.is_success():
                 candidate = res.message.strip().replace('"', '').replace("'", "")
-                # Validate reasonable name length
-                if candidate and len(candidate) < 50 and not candidate.lower().startswith("i "):
+                if candidate and candidate != "NO_NAME_FOUND" and len(candidate) < 100:
                     person_name = candidate
-                    log_layer(4, "Gemini identified person name for LinkedIn", name=person_name)
+                    log_layer(4, "Gemini identified person for LinkedIn", name=person_name)
 
         if not person_name and text_hint:
-            # Extract first clean line or words before parenthetical control type
-            raw_text = text_hint.split("(")[0].strip()
+            raw_text = clean_for_plain_text(text_hint, target="plain")
             lines = [l.strip() for l in raw_text.split("\n") if l.strip()]
             if lines and len(lines[0]) < 60:
                 person_name = lines[0]
                 log_layer(4, "UI text hint provided name for LinkedIn", name=person_name)
 
-        if not person_name:
-            log_layer(4, "No specific name identified; opening generic LinkedIn search")
-            url = "https://www.linkedin.com"
-            webbrowser.open(url)
+        if not person_name or person_name == "NO_NAME_FOUND":
+            log_layer(4, "No specific name identified in text.")
             return ToolResult(
-                status="SUCCESS",
-                message="I opened LinkedIn for you. I couldn't read a specific name under your cursor, so you can search directly.",
-                data={"url": url, "full_details": "LinkedIn opened (no specific name found near cursor)."},
+                status="FAILED",
+                message="I cannot identify this person from the image alone. Please point at their name in the text.",
             )
 
-        encoded = urllib.parse.quote(person_name)
-        search_url = f"https://www.linkedin.com/search/results/all/?keywords={encoded}"
-        log_layer(4, "Opening LinkedIn search URL", url=search_url)
-        webbrowser.open(search_url)
+        direct_linkedin_url = f"https://www.linkedin.com/search/results/all/?keywords={urllib.parse.quote_plus(person_name)}"
         return ToolResult(
-            status="SUCCESS",
-            message=f"Found {person_name}. Opening their LinkedIn profile now.",
-            data={
-                "name": person_name,
-                "url": search_url,
-                "full_details": f"LinkedIn Search: {person_name}\nTarget: {search_url}",
-            },
+            status="REQUIRES_CONFIRMATION",
+            message=f"I found {person_name}. Shall I open their LinkedIn profile?",
+            requires_confirmation=True,
+            confirmation_prompt=f"Open LinkedIn: {person_name}",
+            data={"url": direct_linkedin_url, "full_details": f"Target: {direct_linkedin_url}"}
         )
 
     def _analyze_with_gemini(self, b64_image: str, mime_type: str, prompt: str, api_key: str) -> ToolResult:
         """Query Gemini Vision API in memory using active working models."""
         models = [
+            "gemini-flash-lite-latest",
+            "gemini-3.5-flash",
+            "gemini-3.5-flash-lite",
             "gemini-3.1-flash-lite",
-            "gemini-3.1-flash-image",
-            "gemini-3.1-flash-lite-image",
             "gemini-3.6-flash",
+            "gemini-flash-latest",
         ]
 
         payload = {

@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import { ThinkingOrb, type OrbState } from 'thinking-orbs';
 import { useVoiceOS } from './useVoiceOS';
 import Waveform from './Waveform';
 
@@ -6,57 +7,103 @@ export default function Notch() {
   const { state, transcript, lastActionText } = useVoiceOS();
 
   const isExpanded = state === 'Listening' || state === 'Thinking' || state === 'Responding';
-  const width = isExpanded ? 500 : 340;
-  const height = isExpanded ? 96 : 46;
+  const width = isExpanded ? 520 : 170;
+  const height = isExpanded ? 98 : 38;
+
+  // Map state to hand-tuned ThinkingOrb states from libraries.dev:
+  // "working" | "searching" | "solving" | "listening" | "connecting" | "weaving" | "composing" | "breathing" | "shaping"
+  const getOrbState = (): OrbState => {
+    switch (state) {
+      case 'Listening':
+        return 'listening';
+      case 'Thinking': {
+        const text = (transcript || '').toLowerCase();
+        if (text.includes('apply') || text.includes('resume') || text.includes('write') || text.includes('draft') || text.includes('email') || text.includes('letter')) {
+          return 'composing';
+        }
+        if (text.includes('search') || text.includes('find') || text.includes('job') || text.includes('screen') || text.includes('look')) {
+          return 'searching';
+        }
+        if (text.includes('open') || text.includes('portfolio') || text.includes('connect') || text.includes('github') || text.includes('linkedin') || text.includes('propcast') || text.includes('uniml') || text.includes('control-d')) {
+          return 'connecting';
+        }
+        if (text.includes('analyze') || text.includes('rag') || text.includes('context') || text.includes('project') || text.includes('history')) {
+          return 'weaving';
+        }
+        if (text.includes('solve') || text.includes('code') || text.includes('calculate') || text.includes('error') || text.includes('debug')) {
+          return 'solving';
+        }
+        return 'working';
+      }
+      case 'Responding':
+        return 'shaping';
+      default:
+        return 'breathing';
+    }
+  };
+
+  const orbState = getOrbState();
 
   return (
-    <div className="w-full h-full flex justify-center items-start pt-1.5 select-none">
+    <div className="w-full h-full flex justify-center items-start pt-0 select-none">
       <motion.div
-        initial={{ width: 340, height: 46 }}
+        initial={{ width: 170, height: 38 }}
         animate={{ width, height }}
         transition={{ type: 'spring', damping: 28, stiffness: 360 }}
-        className="voiceos-notch-container flex flex-col"
+        className="voiceos-notch-container flex flex-col bg-black border-x border-b border-[#141414] shadow-none rounded-b-[26px] rounded-t-none overflow-hidden"
       >
         {/* Notch Header Row */}
-        <div className={`w-full flex items-center justify-between px-5 transition-all duration-300 ${isExpanded ? 'pt-3.5 pb-1' : 'h-[46px]'}`}>
-          {/* Left: 3D VoiceOS Gradient Orb */}
-          <div className="flex items-center gap-3.5 flex-1 min-w-0">
-            <div className={isExpanded ? 'voiceos-orb-active' : 'voiceos-orb'} />
+        <div className={`w-full flex items-center justify-between px-4 transition-all duration-300 ${isExpanded ? 'pt-3 pb-1' : 'h-[38px]'}`}>
+          {/* Left: ThinkingOrb from thinking-orbs */}
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <div className="flex items-center justify-center flex-shrink-0">
+              <ThinkingOrb state={orbState} size={isExpanded ? 64 : 20} speed={1} theme="dark" />
+            </div>
             
             <div className="flex flex-col text-left flex-1 min-w-0 pr-2">
               {!isExpanded ? (
-                <div className="flex items-center gap-2.5">
-                  <span className="text-[13px] font-semibold text-white tracking-tight">
-                    JARVIS <span className="text-zinc-400 font-normal">VoiceOS</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[14px] font-bold text-white tracking-wider">
+                    ✦
                   </span>
-                  <span className="px-2 py-0.5 rounded-full bg-white/[0.07] border border-white/10 text-[10px] font-medium text-zinc-400 tracking-wide">
-                    ⚡ Hold Ctrl+Alt
+                  <span className="px-2 py-0.5 rounded-full bg-white/[0.04] text-[10.5px] font-medium text-zinc-400 tracking-wide">
+                    Hold Ctrl+Alt
                   </span>
                 </div>
               ) : (
                 <>
-                  <span className="text-[13px] font-semibold text-white tracking-tight truncate">
-                    {state === 'Listening' && (transcript ? `"${transcript}"` : 'Listening to your command...')}
-                    {state === 'Thinking' && 'Gemini AI reasoning & analyzing intent...'}
-                    {state === 'Responding' && (lastActionText || 'Executing Desktop Action...')}
+                  <span className="text-[13px] font-medium text-white tracking-tight truncate">
+                    {state === 'Listening' && (transcript ? `"${transcript}"` : 'Listening...')}
+                    {state === 'Thinking' && (transcript ? `Processing: "${transcript}"` : 'Thinking...')}
+                    {state === 'Responding' && (lastActionText || 'Action Executed ✓')}
                   </span>
                   <span className="text-[11px] text-zinc-400 mt-0.5 flex items-center gap-1.5">
                     {state === 'Listening' && (
-                      <span className="inline-flex items-center gap-1 text-cyan-400 font-medium">
+                      <span className="text-cyan-400 font-medium flex items-center gap-1">
                         <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-                        Release Ctrl+Alt to Execute
+                        Listening to speech
                       </span>
                     )}
                     {state === 'Thinking' && (
-                      <span className="inline-flex items-center gap-1 text-indigo-400 font-medium">
+                      <span className="text-indigo-400 font-medium flex items-center gap-1">
                         <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
-                        Gemini Flash Multimodal
+                        {orbState === 'searching'
+                          ? 'Searching & Inspecting...'
+                          : orbState === 'connecting'
+                          ? 'Connecting to route...'
+                          : orbState === 'composing'
+                          ? 'Composing resume & application...'
+                          : orbState === 'weaving'
+                          ? 'Weaving profile & RAG memory...'
+                          : orbState === 'solving'
+                          ? 'Solving intent...'
+                          : 'Working on request...'}
                       </span>
                     )}
                     {state === 'Responding' && (
-                      <span className="inline-flex items-center gap-1 text-emerald-400 font-medium">
+                      <span className="text-emerald-400 font-medium flex items-center gap-1">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                        Action Complete • Closing...
+                        Complete
                       </span>
                     )}
                   </span>
@@ -65,10 +112,10 @@ export default function Notch() {
             </div>
           </div>
 
-          {/* Right Status Indicator */}
+          {/* Right Minimal Status Dot */}
           {!isExpanded && (
-            <div className="flex items-center gap-1.5 opacity-80 flex-shrink-0">
-              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
+            <div className="flex items-center gap-1.5 opacity-70 flex-shrink-0">
+              <span className="w-1.5 h-1.5 rounded-full bg-zinc-600" />
               <span className="text-[11px] text-zinc-400 font-medium">Ready</span>
             </div>
           )}
@@ -76,7 +123,7 @@ export default function Notch() {
 
         {/* Live Audio Waveform when listening/thinking */}
         {isExpanded && (
-          <div className="w-full px-5 pb-2">
+          <div className="w-full px-4 pb-2">
             <Waveform />
           </div>
         )}

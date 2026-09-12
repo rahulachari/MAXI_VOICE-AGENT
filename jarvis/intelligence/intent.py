@@ -31,6 +31,8 @@ class IntentCategory(str, Enum):
     CURSOR_ANALYSIS = "CURSOR_ANALYSIS"
 
     SYSTEM_CONTROL = "SYSTEM_CONTROL"
+    
+    DEEP_EXPLANATION = "DEEP_EXPLANATION"
 
     # Communication & Messaging
     MESSAGING = "MESSAGING"
@@ -58,6 +60,8 @@ class IntentCategory(str, Enum):
     AI_QUERY = "AI_QUERY"
     WEATHER = "WEATHER"
     TIME = "TIME"
+    JOB_APPLICATION = "JOB_APPLICATION"
+    RESUME_PROFILE = "RESUME_PROFILE"
     CANCEL = "CANCEL"
     UNKNOWN = "UNKNOWN"
 

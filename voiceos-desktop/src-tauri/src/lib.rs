@@ -38,6 +38,8 @@ pub fn run() {
             actions::hide_notch,
             actions::show_notch,
             actions::get_gemini_key,
+            actions::capture_screen,
+            actions::set_clipboard,
             actions::open_linkedin_profile,
             actions::explain_visual_content,
             actions::general_web_action

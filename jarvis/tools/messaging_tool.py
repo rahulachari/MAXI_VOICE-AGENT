@@ -23,6 +23,8 @@ class MessagingTool(BaseTool):
             return self.send_whatsapp(kwargs.get("contact", ""), kwargs.get("message", ""))
         elif action == "send_telegram":
             return self.send_telegram(kwargs.get("contact", ""), kwargs.get("message", ""))
+        elif action == "share_file_whatsapp":
+            return self.share_file_whatsapp(kwargs.get("contact", ""))
         elif action == "compose_email":
             return self.compose_email(
                 kwargs.get("recipient", ""),
@@ -97,6 +99,59 @@ class MessagingTool(BaseTool):
 
         except Exception as e:
             return ToolResult(status="FAILED", message=f"Failed to open WhatsApp: {str(e)}")
+
+    def share_file_whatsapp(self, contact: str = "") -> ToolResult:
+        """Shares the last opened file via WhatsApp Desktop"""
+        last_file = os.environ.get("JARVIS_LAST_FILE", "")
+        if not last_file or not os.path.exists(last_file):
+            return ToolResult(status="FAILED", message="I don't remember which file you opened recently. Please open it first.")
+
+        try:
+            # Copy file to clipboard
+            subprocess.run(["powershell", "-command", f"Set-Clipboard -Path '{last_file}'"])
+            time.sleep(0.5)
+
+            # Open WhatsApp
+            whatsapp_paths = [
+                os.path.expandvars(r"%LOCALAPPDATA%\WhatsApp\WhatsApp.exe"),
+                os.path.expandvars(r"%PROGRAMFILES%\WindowsApps\WhatsApp"),
+            ]
+            launched = False
+            for path in whatsapp_paths:
+                if os.path.exists(path):
+                    subprocess.Popen([path], shell=True)
+                    launched = True
+                    break
+            if not launched:
+                subprocess.Popen("start whatsapp:", shell=True)
+            
+            time.sleep(2.5)
+
+            if contact:
+                # Search contact
+                pyautogui.hotkey("ctrl", "f")
+                time.sleep(0.5)
+                pyautogui.typewrite(contact, interval=0.03)
+                time.sleep(1.5)
+                pyautogui.press("enter")
+                time.sleep(1.0)
+                
+                # Paste file
+                pyautogui.hotkey("ctrl", "v")
+                time.sleep(1.0)
+                pyautogui.press("enter")
+                
+                return ToolResult(
+                    status="SUCCESS",
+                    message=f"Shared the file with {contact.title()} on WhatsApp.",
+                )
+            else:
+                return ToolResult(
+                    status="SUCCESS",
+                    message="Opened WhatsApp. Please select a contact and press Ctrl+V to paste the file.",
+                )
+        except Exception as e:
+            return ToolResult(status="FAILED", message=f"Failed to share file on WhatsApp: {str(e)}")
 
     def send_telegram(self, contact: str, message: str = "") -> ToolResult:
         """Opens Telegram Desktop and searches for a contact."""
@@ -176,11 +231,18 @@ class MessagingTool(BaseTool):
         if not contact:
             return ToolResult(status="FAILED", message="Who would you like to call?")
 
-        # Open the contact in WhatsApp first
+        # Open the contact in WhatsApp first (this will search and focus the chat)
         result = self.send_whatsapp(contact)
         if result.is_success():
+            # Wait for the chat to fully load
+            time.sleep(1.0)
+            
+            # Use WhatsApp Desktop shortcut for voice call (Ctrl + Alt + C)
+            pyautogui.hotkey("ctrl", "alt", "c")
+            time.sleep(0.5)
+            
             return ToolResult(
                 status="SUCCESS",
-                message=f"Opened {contact.title()}'s chat. You can start a voice or video call from there.",
+                message=f"Placing a call to {contact.title()} on WhatsApp.",
             )
         return result
